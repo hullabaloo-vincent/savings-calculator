@@ -139,19 +139,19 @@ const BalanceSimulator: React.FC = () => {
         while (currentDate <= target) {
             balance *= (1 + dailyRate);
             
-            deposits.forEach((dep, index) => {
+            for (let i = 0; i < deposits.length; i++) {
+                const dep = deposits[i];
                 if (dep.recurring) {
                     if (currentDate >= dep.date && currentDate.getDate() === dep.day) {
                         balance += dep.amount;
                     }
                 } else {
-                    if (!oneTimeAdded[index] && isSameDate(currentDate, dep.date)) {
+                    if (!oneTimeAdded[i] && isSameDate(currentDate, dep.date)) {
                         balance += dep.amount;
-                        oneTimeAdded[index] = true;
+                        oneTimeAdded[i] = true;
                     }
                 }
-            });
-
+            }
             simulation.push({ date: currentDate.toISOString().split('T')[0], balance });
             currentDate.setDate(currentDate.getDate() + 1);
         }
