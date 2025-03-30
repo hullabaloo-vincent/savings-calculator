@@ -78,10 +78,11 @@ const simulateBalanceOverTime = (
         } else if (frequency === 'monthly') {
             interestFactor = currentDate.getDate() === 1 ? Math.pow(1 + apy, 1 / 12) : 1;
         } else if (frequency === 'yearly') {
-            interestFactor = currentDate.getMonth() === 0 && currentDate.getDate() === 1 ? 1 + apy : 1;
+            interestFactor =
+                currentDate.getMonth() === 0 && currentDate.getDate() === 1 ? 1 + apy : 1;
         }
         balance *= interestFactor;
-        
+
         for (let i = 0; i < deposits.length; i++) {
             const dep = deposits[i];
             if (dep.recurring) {
@@ -97,7 +98,6 @@ const simulateBalanceOverTime = (
                 }
             }
         }
-
         simulation.push({date: currentDate.toISOString().split('T')[0], balance});
         currentDate.setDate(currentDate.getDate() + 1);
     }
@@ -215,7 +215,7 @@ const BalanceSimulator: React.FC = () => {
         if (finalBalance !== null) {
             const newScenario: Scenario = {
                 name,
-                simulationData: simulationData.map((point) => ({...point})), // snapshot copy
+                simulationData: simulationData.map((point) => ({...point})),
                 finalBalance,
                 totalDeposited,
                 interestGained,
@@ -242,11 +242,47 @@ const BalanceSimulator: React.FC = () => {
         setTargetDate(scenario.settings.targetDate);
         setCompoundingFrequency(scenario.settings.compoundingFrequency);
         setGoal(scenario.settings.goal);
-        setDepositList(scenario.deposits.map((dep) => ({...dep})));
+
+        setDepositList(scenario.deposits.map((dep) => ({
+            ...dep,
+            date: new Date(dep.date)
+        })));
+
         setSimulationData(scenario.simulationData.map((point) => ({...point})));
         setFinalBalance(scenario.finalBalance);
         setTotalDeposited(scenario.totalDeposited);
         setInterestGained(scenario.interestGained);
+    };
+
+    // ----- Scenario Overwrite: update an existing scenario with current data -----
+    const handleOverwriteScenario = (scenarioIndex: number) => {
+        if (finalBalance === null) return;
+        const updatedScenario: Scenario = {
+            name: scenarios[scenarioIndex].name,
+            simulationData: simulationData.map((point) => ({...point})),
+            finalBalance: finalBalance,
+            totalDeposited: totalDeposited,
+            interestGained: interestGained,
+            settings: {
+                initialBalance,
+                apy,
+                startDate,
+                targetDate,
+                compoundingFrequency,
+                goal,
+            },
+            deposits: depositList.map((dep) => ({...dep})),
+        };
+        setScenarios((prev) => {
+            const newScenarios = [...prev];
+            newScenarios[scenarioIndex] = updatedScenario;
+            return newScenarios;
+        });
+    };
+
+    // ----- Scenario Deletion -----
+    const handleDeleteScenario = (scenarioIndex: number) => {
+        setScenarios((prev) => prev.filter((_, i) => i !== scenarioIndex));
     };
 
     // ----- Combined Scenario Chart Data -----
@@ -278,12 +314,41 @@ const BalanceSimulator: React.FC = () => {
         ],
     };
 
+    // ----- Export Scenarios to JSON -----
+    const exportScenarios = () => {
+        const dataStr = JSON.stringify(scenarios, null, 2);
+        const blob = new Blob([dataStr], {type: 'application/json;charset=utf-8;'});
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'scenarios.json');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // ----- Import Scenarios from JSON -----
+    const importScenarios = (e: ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const imported = JSON.parse(event.target?.result as string) as Scenario[];
+                setScenarios(imported);
+            } catch (error) {
+                console.error('Error parsing imported JSON:', error);
+            }
+        };
+        reader.readAsText(file);
+    };
+
     return (
         <Container maxWidth="md" sx={{py: 4}}>
             <Typography variant="h4" gutterBottom>
                 Savings Balance Simulator
             </Typography>
-
+            
             <Paper sx={{mb: 3}}>
                 <Tabs value={tabValue} onChange={handleTabChange} centered>
                     <Tab label="Settings"/>
@@ -348,7 +413,6 @@ const BalanceSimulator: React.FC = () => {
                         </Grid>
                     </Grid>
                 </Paper>
-
                 <AdvancedSettings
                     compoundingFrequency={compoundingFrequency}
                     setCompoundingFrequency={setCompoundingFrequency}
@@ -372,7 +436,6 @@ const BalanceSimulator: React.FC = () => {
                         </Stack>
                     </Box>
                 </Paper>
-
                 <Paper sx={{p: 2, mb: 3}}>
                     <Typography variant="h6" gutterBottom>
                         Add a Deposit
@@ -415,7 +478,6 @@ const BalanceSimulator: React.FC = () => {
                         </Grid>
                     </Grid>
                 </Paper>
-
                 {depositList.length > 0 && (
                     <Paper sx={{p: 2}}>
                         <Typography variant="subtitle1">Current Deposits:</Typography>
@@ -489,7 +551,7 @@ const BalanceSimulator: React.FC = () => {
                 )}
                 {finalBalance !== null && <GoalTracker goal={goal} currentBalance={finalBalance}/>}
             </TabPanel>
-
+            
             <TabPanel value={tabValue} index={3}>
                 <Paper sx={{p: 2, mb: 3}}>
                     <Typography variant="h6" gutterBottom>
@@ -507,6 +569,16 @@ const BalanceSimulator: React.FC = () => {
                         </Button>
                     </Stack>
                 </Paper>
+                
+                <Stack direction="row" spacing={2} sx={{mb: 3}}>
+                    <Button variant="outlined" onClick={exportScenarios}>
+                        Export Scenarios
+                    </Button>
+                    <Button variant="outlined" component="label">
+                        Import Scenarios
+                        <input type="file" hidden accept="application/json" onChange={importScenarios}/>
+                    </Button>
+                </Stack>
 
                 {scenarios.length > 0 ? (
                     <>
@@ -547,10 +619,20 @@ const BalanceSimulator: React.FC = () => {
                                                 })}
                                             </TableCell>
                                             <TableCell>
-                                                <Button variant="outlined" size="small"
-                                                        onClick={() => handleLoadScenario(sc)}>
-                                                    Load
-                                                </Button>
+                                                <Stack direction="row" spacing={1}>
+                                                    <Button variant="outlined" size="small"
+                                                            onClick={() => handleLoadScenario(sc)}>
+                                                        Load
+                                                    </Button>
+                                                    <Button variant="outlined" size="small"
+                                                            onClick={() => handleOverwriteScenario(i)}>
+                                                        Overwrite
+                                                    </Button>
+                                                    <Button variant="outlined" size="small"
+                                                            onClick={() => handleDeleteScenario(i)}>
+                                                        Delete
+                                                    </Button>
+                                                </Stack>
                                             </TableCell>
                                         </TableRow>
                                     ))}
