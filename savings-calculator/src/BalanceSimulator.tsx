@@ -16,7 +16,7 @@ import {
     Paper,
     Stack,
     IconButton,
-    Grid
+    Grid,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import {Line} from 'react-chartjs-2';
@@ -28,7 +28,7 @@ import {
     LineElement,
     Title,
     Tooltip,
-    Legend
+    Legend,
 } from 'chart.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
@@ -50,9 +50,15 @@ const isSameDate = (d1: Date, d2: Date): boolean =>
     d1.getMonth() === d2.getMonth() &&
     d1.getDate() === d2.getDate();
 
+interface SimulationResult {
+    simulation: SimulationPoint[];
+    finalBalance: number;
+    totalDeposited: number;
+}
+
 const BalanceSimulator: React.FC = () => {
     // Simulation parameters
-    const [initialBalance, setInitialBalance] = useState<number>(1000.00);
+    const [initialBalance, setInitialBalance] = useState<number>(1000.0);
     const [apy, setApy] = useState<number>(0.137);
     const [startDate, setStartDate] = useState<string>('2025-01-01');
     const [targetDate, setTargetDate] = useState<string>('2025-12-31');
@@ -65,7 +71,12 @@ const BalanceSimulator: React.FC = () => {
 
     const [simulationData, setSimulationData] = useState<SimulationPoint[]>([]);
     const [finalBalance, setFinalBalance] = useState<number | null>(null);
-
+    const [totalDeposited, setTotalDeposited] = useState<number>(0);
+    const [interestGained, setInterestGained] = useState<number>(0);
+    const currencyFormatter = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+    });
     const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -87,7 +98,7 @@ const BalanceSimulator: React.FC = () => {
                 },
                 error: (error) => {
                     console.error('Error parsing CSV:', error);
-                }
+                },
             });
         }
     };
@@ -129,43 +140,48 @@ const BalanceSimulator: React.FC = () => {
         start: Date,
         target: Date,
         deposits: Deposit[]
-    ): SimulationPoint[] => {
+    ): SimulationResult => {
         const dailyRate = Math.pow(1 + apy, 1 / 365) - 1;
         let balance = initialBalance;
         let currentDate = new Date(start);
         const simulation: SimulationPoint[] = [];
         const oneTimeAdded: boolean[] = new Array(deposits.length).fill(false);
+        let totalDeposited = 0;
 
         while (currentDate <= target) {
-            balance *= (1 + dailyRate);
+            // Compound interest for the day
+            balance *= 1 + dailyRate;
 
+            // Process deposits for today
             for (let i = 0; i < deposits.length; i++) {
                 const dep = deposits[i];
                 if (dep.recurring) {
                     if (currentDate >= dep.date && currentDate.getDate() === dep.day) {
                         balance += dep.amount;
+                        totalDeposited += dep.amount;
                     }
                 } else {
                     if (!oneTimeAdded[i] && isSameDate(currentDate, dep.date)) {
                         balance += dep.amount;
                         oneTimeAdded[i] = true;
+                        totalDeposited += dep.amount;
                     }
                 }
             }
             simulation.push({date: currentDate.toISOString().split('T')[0], balance});
             currentDate.setDate(currentDate.getDate() + 1);
         }
-        return simulation;
+        return {simulation, finalBalance: balance, totalDeposited};
     };
 
     const handleSimulate = () => {
         const start = new Date(startDate);
         const target = new Date(targetDate);
-        const simulation = simulateBalanceOverTime(initialBalance, apy, start, target, depositList);
-        setSimulationData(simulation);
-        if (simulation.length > 0) {
-            setFinalBalance(simulation[simulation.length - 1].balance);
-        }
+        const result = simulateBalanceOverTime(initialBalance, apy, start, target, depositList);
+        setSimulationData(result.simulation);
+        setFinalBalance(result.finalBalance);
+        setTotalDeposited(result.totalDeposited);
+        setInterestGained(result.finalBalance - (initialBalance + result.totalDeposited));
     };
 
     const chartData = {
@@ -187,6 +203,7 @@ const BalanceSimulator: React.FC = () => {
                 Savings Balance Simulator
             </Typography>
 
+            {/* Simulation Settings */}
             <Paper sx={{p: 2, mb: 3}}>
                 <Typography variant="h6" gutterBottom>
                     Simulation Settings
@@ -233,6 +250,7 @@ const BalanceSimulator: React.FC = () => {
                 </Grid>
             </Paper>
 
+            {/* Deposits */}
             <Paper sx={{p: 2, mb: 3}}>
                 <Typography variant="h6" gutterBottom>
                     Deposits
@@ -248,7 +266,6 @@ const BalanceSimulator: React.FC = () => {
                         </Button>
                     </Stack>
                 </Box>
-
                 <Grid container spacing={2} alignItems="center">
                     <Grid size={{xs: 12, sm: 4, md: 3}}>
                         <TextField
@@ -286,7 +303,6 @@ const BalanceSimulator: React.FC = () => {
                         </Button>
                     </Grid>
                 </Grid>
-
                 {depositList.length > 0 && (
                     <Box sx={{mt: 3, overflowX: 'auto'}}>
                         <Typography variant="subtitle1">Current Deposits:</Typography>
@@ -306,11 +322,7 @@ const BalanceSimulator: React.FC = () => {
                                         <TableCell>{dep.date.toISOString().split('T')[0]}</TableCell>
                                         <TableCell>{dep.recurring ? 'Yes' : 'No'}</TableCell>
                                         <TableCell>
-                                            <IconButton
-                                                color="error"
-                                                onClick={() => removeDeposit(idx)}
-                                                size="small"
-                                            >
+                                            <IconButton color="error" onClick={() => removeDeposit(idx)} size="small">
                                                 <DeleteIcon/>
                                             </IconButton>
                                         </TableCell>
@@ -331,7 +343,13 @@ const BalanceSimulator: React.FC = () => {
             {finalBalance !== null && (
                 <Paper sx={{p: 2}}>
                     <Typography variant="h6" gutterBottom>
-                        Projected Balance on {targetDate}: ${finalBalance.toFixed(2)}
+                        Projected Balance on {targetDate}: {currencyFormatter.format(finalBalance)}
+                    </Typography>
+                    <Typography variant="body1" gutterBottom>
+                        Total Deposited: {currencyFormatter.format(totalDeposited)}
+                    </Typography>
+                    <Typography variant="body1" gutterBottom>
+                        Interest Gained: {currencyFormatter.format(interestGained)}
                     </Typography>
                     {simulationData.length > 0 && (
                         <Box sx={{mt: 3}}>
