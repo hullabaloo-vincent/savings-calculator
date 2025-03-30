@@ -19,6 +19,8 @@ export interface Scenario {
         targetDate: string;
         compoundingFrequency: CompoundingFrequency;
         goal: number;
+        inflationRate: number,
+        taxRate: number
     };
     deposits: Deposit[];
 }
@@ -34,4 +36,9 @@ export interface TabPanelProps {
     children?: React.ReactNode;
     index: number;
     value: number;
+}
+
+export interface HelpModalProps {
+    open: boolean;
+    onClose: () => void;
 }
