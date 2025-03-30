@@ -143,12 +143,12 @@ const simulateBalanceOverTime = (
         } else if (frequency === 'yearly') {
             interestFactor = currentDate.getMonth() === 0 && currentDate.getDate() === 1 ? 1 + apy : 1;
         }
-        
+
         const prevBalance = balance;
         const grossInterest = prevBalance * (interestFactor - 1);
         const netInterest = grossInterest * (1 - taxRate / 100);
         balance = prevBalance + netInterest;
-        
+
         for (let i = 0; i < deposits.length; i++) {
             const dep = deposits[i];
             if (dep.recurring) {
@@ -213,7 +213,7 @@ const BalanceSimulator: React.FC = () => {
             handleSimulate();
         }
     }, [taxRate]);
-    
+
     // ----- CSV Handling -----
     const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -270,7 +270,7 @@ const BalanceSimulator: React.FC = () => {
     };
 
     // ----- Simulation Execution -----
-    const handleSimulate = () => {
+    const handleSimulate = React.useCallback(() => {
         const result = simulateBalanceOverTime(
             initialBalance,
             apy,
@@ -284,15 +284,14 @@ const BalanceSimulator: React.FC = () => {
         setFinalBalance(result.finalBalance);
         setTotalDeposited(result.totalDeposited);
         setInterestGained(result.finalBalance - (initialBalance + result.totalDeposited));
-
-        // Calculate duration in years for inflation adjustment
+        
         const durationYears =
             (new Date(targetDate).getTime() - new Date(startDate).getTime()) / (365 * 24 * 3600 * 1000);
         const realFinal = result.finalBalance / Math.pow(1 + inflationRate / 100, durationYears);
         setRealFinalBalance(realFinal);
         setRealInterestGained(realFinal - (initialBalance + result.totalDeposited));
 
-        // Calculate approximate gross interest and suggest tax rate if needed
+        // Calculate tax suggestion based on approximate gross interest
         const netInterest = result.finalBalance - (initialBalance + result.totalDeposited);
         const approximateGrossInterest = netInterest / (1 - taxRate / 100);
         const suggested = getSuggestedTaxRate(approximateGrossInterest);
@@ -301,7 +300,7 @@ const BalanceSimulator: React.FC = () => {
         } else {
             setTaxSuggestion(null);
         }
-    };
+    }, [initialBalance, apy, startDate, targetDate, depositList, compoundingFrequency, taxRate, inflationRate]);
 
     const applySuggestedTaxRate = () => {
         if (taxSuggestion !== null) {
@@ -456,7 +455,7 @@ const BalanceSimulator: React.FC = () => {
             </Stack>
 
             <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)}/>
-            
+
             <Paper sx={{mb: 3}}>
                 <Tabs value={tabValue} onChange={handleTabChange} centered>
                     <Tab label="Settings"/>
@@ -465,7 +464,7 @@ const BalanceSimulator: React.FC = () => {
                     <Tab label="Comparison"/>
                 </Tabs>
             </Paper>
-            
+
             <TabPanel value={tabValue} index={0}>
                 <Paper sx={{p: 2, mb: 3}}>
                     <Typography variant="h6" gutterBottom>
@@ -530,7 +529,7 @@ const BalanceSimulator: React.FC = () => {
                     setTaxRate={setTaxRate}
                 />
             </TabPanel>
-            
+
             <TabPanel value={tabValue} index={1}>
                 <Paper sx={{p: 2, mb: 3}}>
                     <Typography variant="h6" gutterBottom>
@@ -623,7 +622,7 @@ const BalanceSimulator: React.FC = () => {
                     </Paper>
                 )}
             </TabPanel>
-            
+
             <TabPanel value={tabValue} index={2}>
                 <Box sx={{textAlign: 'center', mb: 3}}>
                     <Button variant="contained" size="large" onClick={handleSimulate}>
@@ -692,7 +691,7 @@ const BalanceSimulator: React.FC = () => {
                 )}
                 {finalBalance !== null && <GoalTracker goal={goal} currentBalance={finalBalance}/>}
             </TabPanel>
-            
+
             <TabPanel value={tabValue} index={3}>
                 <Paper sx={{p: 2, mb: 3}}>
                     <Typography variant="h6" gutterBottom>
