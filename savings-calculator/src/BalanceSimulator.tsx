@@ -1,4 +1,4 @@
-import React, {useState, useMemo, ChangeEvent} from 'react';
+import React, {useState, ChangeEvent, useMemo} from 'react';
 import Papa from 'papaparse';
 import {
     Container,
@@ -6,19 +6,17 @@ import {
     TextField,
     Button,
     Typography,
-    Table,
-    TableHead,
-    TableRow,
-    TableCell,
-    TableBody,
-    Checkbox,
-    FormControlLabel,
     Paper,
     Stack,
     IconButton,
     Grid,
     Tabs,
     Tab,
+    Table,
+    TableHead,
+    TableRow,
+    TableCell,
+    TableBody, Checkbox, FormControlLabel,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import {Line} from 'react-chartjs-2';
@@ -33,16 +31,10 @@ import {
     Legend,
 } from 'chart.js';
 import AdvancedSettings, {CompoundingFrequency} from './components/AdvancedSettings';
-import {Scenario, SimulationPoint, Deposit, SimulationResult} from './types';
-import GoalTracker from "./components/GoalTracker";
+import GoalTracker from './components/GoalTracker';
+import {SimulationPoint, Scenario, Deposit, TabPanelProps} from './types';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
-
-interface TabPanelProps {
-    children?: React.ReactNode;
-    index: number;
-    value: number;
-}
 
 const TabPanel: React.FC<TabPanelProps> = ({children, value, index}) => {
     return (
@@ -58,7 +50,7 @@ const TabPanel: React.FC<TabPanelProps> = ({children, value, index}) => {
     );
 };
 
-// Compare two dates (ignoring time)
+
 const isSameDate = (d1: Date, d2: Date): boolean =>
     d1.getFullYear() === d2.getFullYear() &&
     d1.getMonth() === d2.getMonth() &&
@@ -72,7 +64,7 @@ const simulateBalanceOverTime = (
     target: Date,
     deposits: Deposit[],
     frequency: CompoundingFrequency
-): SimulationResult => {
+) => {
     let balance = initialBalance;
     let currentDate = new Date(start);
     const simulation: SimulationPoint[] = [];
@@ -109,7 +101,6 @@ const simulateBalanceOverTime = (
         simulation.push({date: currentDate.toISOString().split('T')[0], balance});
         currentDate.setDate(currentDate.getDate() + 1);
     }
-
     return {simulation, finalBalance: balance, totalDeposited};
 };
 
@@ -224,16 +215,38 @@ const BalanceSimulator: React.FC = () => {
         if (finalBalance !== null) {
             const newScenario: Scenario = {
                 name,
-                startDate,
-                targetDate,
-                simulationData: simulationData.map((point) => ({...point})),
+                simulationData: simulationData.map((point) => ({...point})), // snapshot copy
                 finalBalance,
                 totalDeposited,
                 interestGained,
+                settings: {
+                    initialBalance,
+                    apy,
+                    startDate,
+                    targetDate,
+                    compoundingFrequency,
+                    goal,
+                },
+                deposits: depositList.map((dep) => ({...dep})),
             };
             setScenarios((prev) => [...prev, newScenario]);
             setScenarioName('');
         }
+    };
+
+    // ----- Scenario Loading -----
+    const handleLoadScenario = (scenario: Scenario) => {
+        setInitialBalance(scenario.settings.initialBalance);
+        setApy(scenario.settings.apy);
+        setStartDate(scenario.settings.startDate);
+        setTargetDate(scenario.settings.targetDate);
+        setCompoundingFrequency(scenario.settings.compoundingFrequency);
+        setGoal(scenario.settings.goal);
+        setDepositList(scenario.deposits.map((dep) => ({...dep})));
+        setSimulationData(scenario.simulationData.map((point) => ({...point})));
+        setFinalBalance(scenario.finalBalance);
+        setTotalDeposited(scenario.totalDeposited);
+        setInterestGained(scenario.interestGained);
     };
 
     // ----- Combined Scenario Chart Data -----
@@ -270,7 +283,7 @@ const BalanceSimulator: React.FC = () => {
             <Typography variant="h4" gutterBottom>
                 Savings Balance Simulator
             </Typography>
-            
+
             <Paper sx={{mb: 3}}>
                 <Tabs value={tabValue} onChange={handleTabChange} centered>
                     <Tab label="Settings"/>
@@ -443,39 +456,28 @@ const BalanceSimulator: React.FC = () => {
                         Run Simulation
                     </Button>
                 </Box>
-
                 {finalBalance !== null ? (
                     <Paper sx={{p: 2, mb: 3}}>
                         <Typography variant="h6" gutterBottom>
                             Projected Balance on {targetDate}:{' '}
-                            {finalBalance.toLocaleString('en-US', {
-                                style: 'currency',
-                                currency: 'USD',
-                            })}
+                            {finalBalance.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
                         </Typography>
                         <Typography variant="body1" gutterBottom>
                             Total Deposited:{' '}
-                            {totalDeposited.toLocaleString('en-US', {
-                                style: 'currency',
-                                currency: 'USD',
-                            })}
+                            {totalDeposited.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
                         </Typography>
                         <Typography variant="body1" gutterBottom>
                             Interest Gained:{' '}
-                            {interestGained.toLocaleString('en-US', {
-                                style: 'currency',
-                                currency: 'USD',
-                            })}
+                            {interestGained.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
                         </Typography>
                         {simulationData.length > 0 && (
-                            <Box sx={{mt: 3}}>
+                            <Box sx={{mt: 3, height: 300, position: 'relative'}}>
                                 <Line
                                     data={currentChartData}
                                     options={{
                                         responsive: true,
                                         maintainAspectRatio: false,
                                     }}
-                                    height={300}
                                 />
                             </Box>
                         )}
@@ -485,12 +487,9 @@ const BalanceSimulator: React.FC = () => {
                         No simulation results yet. Please run the simulation first.
                     </Typography>
                 )}
-
-                {finalBalance !== null && (
-                    <GoalTracker goal={goal} currentBalance={finalBalance}/>
-                )}
+                {finalBalance !== null && <GoalTracker goal={goal} currentBalance={finalBalance}/>}
             </TabPanel>
-            
+
             <TabPanel value={tabValue} index={3}>
                 <Paper sx={{p: 2, mb: 3}}>
                     <Typography variant="h6" gutterBottom>
@@ -513,7 +512,7 @@ const BalanceSimulator: React.FC = () => {
                     <>
                         <Paper sx={{p: 2, mb: 3}}>
                             <Typography variant="h6" gutterBottom>
-                                Scenarios
+                                Saved Scenarios
                             </Typography>
                             <Table size="small">
                                 <TableHead>
@@ -522,6 +521,7 @@ const BalanceSimulator: React.FC = () => {
                                         <TableCell>Final Balance</TableCell>
                                         <TableCell>Total Deposited</TableCell>
                                         <TableCell>Interest Gained</TableCell>
+                                        <TableCell>Actions</TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -546,12 +546,18 @@ const BalanceSimulator: React.FC = () => {
                                                     currency: 'USD',
                                                 })}
                                             </TableCell>
+                                            <TableCell>
+                                                <Button variant="outlined" size="small"
+                                                        onClick={() => handleLoadScenario(sc)}>
+                                                    Load
+                                                </Button>
+                                            </TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
                             </Table>
                         </Paper>
-
+                        
                         <Paper sx={{p: 2}}>
                             <Typography variant="h6" gutterBottom>
                                 Combined Scenario Chart

@@ -1,3 +1,6 @@
+import {CompoundingFrequency} from "./components/AdvancedSettings";
+import React from "react";
+
 export interface SimulationPoint {
     date: string;
     balance: number;
@@ -5,12 +8,19 @@ export interface SimulationPoint {
 
 export interface Scenario {
     name: string;
-    startDate: string;
-    targetDate: string;
     simulationData: SimulationPoint[];
     finalBalance: number;
     totalDeposited: number;
     interestGained: number;
+    settings: {
+        initialBalance: number;
+        apy: number;
+        startDate: string;
+        targetDate: string;
+        compoundingFrequency: CompoundingFrequency;
+        goal: number;
+    };
+    deposits: Deposit[];
 }
 
 export interface Deposit {
@@ -20,8 +30,8 @@ export interface Deposit {
     day: number;
 }
 
-export interface SimulationResult {
-    simulation: SimulationPoint[];
-    finalBalance: number;
-    totalDeposited: number;
+export interface TabPanelProps {
+    children?: React.ReactNode;
+    index: number;
+    value: number;
 }
