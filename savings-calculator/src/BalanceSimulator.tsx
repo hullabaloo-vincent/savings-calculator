@@ -206,14 +206,6 @@ const BalanceSimulator: React.FC = () => {
     const [scenarios, setScenarios] = useState<Scenario[]>([]);
     const [scenarioName, setScenarioName] = useState<string>('');
 
-    // ----- Tax Suggestion State -----
-    const [taxSuggestion, setTaxSuggestion] = useState<number | null>(null);
-    React.useEffect(() => {
-        if (finalBalance !== null) {
-            handleSimulate();
-        }
-    }, [taxRate]);
-
     // ----- CSV Handling -----
     const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -302,6 +294,14 @@ const BalanceSimulator: React.FC = () => {
         }
     }, [initialBalance, apy, startDate, targetDate, depositList, compoundingFrequency, taxRate, inflationRate]);
 
+    // ----- Tax Suggestion State -----
+    const [taxSuggestion, setTaxSuggestion] = useState<number | null>(null);
+    React.useEffect(() => {
+        if (finalBalance !== null) {
+            handleSimulate();
+        }
+    }, [taxRate, finalBalance, handleSimulate]);
+    
     const applySuggestedTaxRate = () => {
         if (taxSuggestion !== null) {
             setTaxRate(taxSuggestion);
