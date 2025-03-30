@@ -1,4 +1,4 @@
-import React, {useState, ChangeEvent, useMemo} from 'react';
+import React, {useState, useMemo, ChangeEvent} from 'react';
 import Papa from 'papaparse';
 import {
     Container,
@@ -16,7 +16,10 @@ import {
     TableHead,
     TableRow,
     TableCell,
-    TableBody, Checkbox, FormControlLabel,
+    TableBody,
+    Checkbox,
+    FormControlLabel,
+    Modal,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import {Line} from 'react-chartjs-2';
@@ -32,7 +35,7 @@ import {
 } from 'chart.js';
 import AdvancedSettings, {CompoundingFrequency} from './components/AdvancedSettings';
 import GoalTracker from './components/GoalTracker';
-import {SimulationPoint, Scenario, Deposit, TabPanelProps} from './types';
+import {SimulationPoint, Scenario, Deposit, TabPanelProps, HelpModalProps} from './types';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -50,20 +53,73 @@ const TabPanel: React.FC<TabPanelProps> = ({children, value, index}) => {
     );
 };
 
+const HelpModal: React.FC<HelpModalProps> = ({open, onClose}) => {
+    return (
+        <Modal open={open} onClose={onClose} aria-labelledby="help-modal-title"
+               aria-describedby="help-modal-description">
+            <Box
+                sx={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: {xs: '90%', sm: 600},
+                    bgcolor: 'background.paper',
+                    border: '2px solid #000',
+                    boxShadow: 24,
+                    p: 4,
+                }}
+            >
+                <Typography id="help-modal-title" variant="h6" component="h2" gutterBottom>
+                    User Guide
+                </Typography>
+                <Typography id="help-modal-description" sx={{mt: 2}}>
+                    <ul>
+                        <li>
+                            <strong>Simulation Settings:</strong> Set your initial balance, APY, simulation period, and
+                            savings goal.
+                        </li>
+                        <li>
+                            <strong>Advanced Settings:</strong> Choose your compounding frequency and adjust for
+                            inflation (annual %
+                            discount) and tax rate on interest.
+                        </li>
+                        <li>
+                            <strong>Deposits:</strong> Add one‑time or recurring deposits manually or upload via CSV.
+                        </li>
+                        <li>
+                            <strong>Results:</strong> Run the simulation to see your nominal balance and a "real"
+                            balance (inflation‑adjusted).
+                        </li>
+                        <li>
+                            <strong>Scenario Management:</strong> Save, load, overwrite, delete, export, and import
+                            scenarios for comparison.
+                        </li>
+                    </ul>
+                </Typography>
+                <Box sx={{mt: 2, textAlign: 'right'}}>
+                    <Button variant="contained" onClick={onClose}>
+                        Close
+                    </Button>
+                </Box>
+            </Box>
+        </Modal>
+    );
+};
 
 const isSameDate = (d1: Date, d2: Date): boolean =>
     d1.getFullYear() === d2.getFullYear() &&
     d1.getMonth() === d2.getMonth() &&
     d1.getDate() === d2.getDate();
 
-// Simulation function with compounding frequency support
 const simulateBalanceOverTime = (
     initialBalance: number,
     apy: number,
     start: Date,
     target: Date,
     deposits: Deposit[],
-    frequency: CompoundingFrequency
+    frequency: CompoundingFrequency,
+    taxRate: number 
 ) => {
     let balance = initialBalance;
     let currentDate = new Date(start);
@@ -78,11 +134,15 @@ const simulateBalanceOverTime = (
         } else if (frequency === 'monthly') {
             interestFactor = currentDate.getDate() === 1 ? Math.pow(1 + apy, 1 / 12) : 1;
         } else if (frequency === 'yearly') {
-            interestFactor =
-                currentDate.getMonth() === 0 && currentDate.getDate() === 1 ? 1 + apy : 1;
+            interestFactor = currentDate.getMonth() === 0 && currentDate.getDate() === 1 ? 1 + apy : 1;
         }
-        balance *= interestFactor;
+        // Compute interest earned and apply tax
+        const prevBalance = balance;
+        const grossInterest = prevBalance * (interestFactor - 1);
+        const netInterest = grossInterest * (1 - taxRate / 100);
+        balance = prevBalance + netInterest;
 
+        // Process deposits
         for (let i = 0; i < deposits.length; i++) {
             const dep = deposits[i];
             if (dep.recurring) {
@@ -98,6 +158,7 @@ const simulateBalanceOverTime = (
                 }
             }
         }
+
         simulation.push({date: currentDate.toISOString().split('T')[0], balance});
         currentDate.setDate(currentDate.getDate() + 1);
     }
@@ -111,6 +172,9 @@ const BalanceSimulator: React.FC = () => {
         setTabValue(newValue);
     };
 
+    // ----- Help Modal State -----
+    const [helpOpen, setHelpOpen] = useState<boolean>(false);
+
     // ----- Simulation Parameters -----
     const [initialBalance, setInitialBalance] = useState<number>(1000.0);
     const [apy, setApy] = useState<number>(0.137);
@@ -119,8 +183,9 @@ const BalanceSimulator: React.FC = () => {
     const [goal, setGoal] = useState<number>(20000);
 
     // ----- Advanced Settings -----
-    const [compoundingFrequency, setCompoundingFrequency] =
-        useState<CompoundingFrequency>('daily');
+    const [compoundingFrequency, setCompoundingFrequency] = useState<CompoundingFrequency>('daily');
+    const [inflationRate, setInflationRate] = useState<number>(2); // 2%
+    const [taxRate, setTaxRate] = useState<number>(25); // 25%
 
     // ----- Deposits -----
     const [depositList, setDepositList] = useState<Deposit[]>([]);
@@ -133,6 +198,8 @@ const BalanceSimulator: React.FC = () => {
     const [finalBalance, setFinalBalance] = useState<number | null>(null);
     const [totalDeposited, setTotalDeposited] = useState<number>(0);
     const [interestGained, setInterestGained] = useState<number>(0);
+    const [realFinalBalance, setRealFinalBalance] = useState<number | null>(null);
+    const [realInterestGained, setRealInterestGained] = useState<number>(0);
 
     // ----- Scenario Comparison -----
     const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -201,12 +268,21 @@ const BalanceSimulator: React.FC = () => {
             new Date(startDate),
             new Date(targetDate),
             depositList,
-            compoundingFrequency
+            compoundingFrequency,
+            taxRate
         );
         setSimulationData(result.simulation);
         setFinalBalance(result.finalBalance);
         setTotalDeposited(result.totalDeposited);
         setInterestGained(result.finalBalance - (initialBalance + result.totalDeposited));
+
+        // Calculate duration in years
+        const durationYears =
+            (new Date(targetDate).getTime() - new Date(startDate).getTime()) / (365 * 24 * 3600 * 1000);
+        // Discount nominal final balance to get real balance
+        const realFinal = result.finalBalance / Math.pow(1 + inflationRate / 100, durationYears);
+        setRealFinalBalance(realFinal);
+        setRealInterestGained(realFinal - (initialBalance + result.totalDeposited));
     };
 
     // ----- Scenario Saving -----
@@ -216,7 +292,7 @@ const BalanceSimulator: React.FC = () => {
             const newScenario: Scenario = {
                 name,
                 simulationData: simulationData.map((point) => ({...point})),
-                finalBalance,
+                finalBalance: finalBalance,
                 totalDeposited,
                 interestGained,
                 settings: {
@@ -226,6 +302,8 @@ const BalanceSimulator: React.FC = () => {
                     targetDate,
                     compoundingFrequency,
                     goal,
+                    inflationRate,
+                    taxRate,
                 },
                 deposits: depositList.map((dep) => ({...dep})),
             };
@@ -242,27 +320,29 @@ const BalanceSimulator: React.FC = () => {
         setTargetDate(scenario.settings.targetDate);
         setCompoundingFrequency(scenario.settings.compoundingFrequency);
         setGoal(scenario.settings.goal);
-
-        setDepositList(scenario.deposits.map((dep) => ({
-            ...dep,
-            date: new Date(dep.date)
-        })));
-
+        setInflationRate(scenario.settings.inflationRate);
+        setTaxRate(scenario.settings.taxRate);
+        setDepositList(
+            scenario.deposits.map((dep) => ({
+                ...dep,
+                date: new Date(dep.date),
+            }))
+        );
         setSimulationData(scenario.simulationData.map((point) => ({...point})));
         setFinalBalance(scenario.finalBalance);
         setTotalDeposited(scenario.totalDeposited);
         setInterestGained(scenario.interestGained);
     };
 
-    // ----- Scenario Overwrite: update an existing scenario with current data -----
+    // ----- Scenario Overwrite -----
     const handleOverwriteScenario = (scenarioIndex: number) => {
         if (finalBalance === null) return;
         const updatedScenario: Scenario = {
             name: scenarios[scenarioIndex].name,
             simulationData: simulationData.map((point) => ({...point})),
             finalBalance: finalBalance,
-            totalDeposited: totalDeposited,
-            interestGained: interestGained,
+            totalDeposited,
+            interestGained,
             settings: {
                 initialBalance,
                 apy,
@@ -270,6 +350,8 @@ const BalanceSimulator: React.FC = () => {
                 targetDate,
                 compoundingFrequency,
                 goal,
+                inflationRate,
+                taxRate,
             },
             deposits: depositList.map((dep) => ({...dep})),
         };
@@ -305,7 +387,7 @@ const BalanceSimulator: React.FC = () => {
         labels: simulationData.map((point) => point.date),
         datasets: [
             {
-                label: 'Savings Balance',
+                label: 'Nominal Balance',
                 data: simulationData.map((point) => point.balance),
                 fill: false,
                 borderColor: '#1976d2',
@@ -314,7 +396,7 @@ const BalanceSimulator: React.FC = () => {
         ],
     };
 
-    // ----- Export Scenarios to JSON -----
+    // ----- Export/Import Scenarios -----
     const exportScenarios = () => {
         const dataStr = JSON.stringify(scenarios, null, 2);
         const blob = new Blob([dataStr], {type: 'application/json;charset=utf-8;'});
@@ -327,7 +409,6 @@ const BalanceSimulator: React.FC = () => {
         document.body.removeChild(link);
     };
 
-    // ----- Import Scenarios from JSON -----
     const importScenarios = (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -345,10 +426,17 @@ const BalanceSimulator: React.FC = () => {
 
     return (
         <Container maxWidth="md" sx={{py: 4}}>
-            <Typography variant="h4" gutterBottom>
-                Savings Balance Simulator
-            </Typography>
-            
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{mb: 2}}>
+                <Typography variant="h4">Savings Balance Simulator</Typography>
+                <Button variant="outlined" onClick={() => setHelpOpen(true)}>
+                    Help
+                </Button>
+            </Stack>
+
+            {/* Help Modal */}
+            <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)}/>
+
+            {/* Tabs */}
             <Paper sx={{mb: 3}}>
                 <Tabs value={tabValue} onChange={handleTabChange} centered>
                     <Tab label="Settings"/>
@@ -416,6 +504,10 @@ const BalanceSimulator: React.FC = () => {
                 <AdvancedSettings
                     compoundingFrequency={compoundingFrequency}
                     setCompoundingFrequency={setCompoundingFrequency}
+                    inflationRate={inflationRate}
+                    setInflationRate={setInflationRate}
+                    taxRate={taxRate}
+                    setTaxRate={setTaxRate}
                 />
             </TabPanel>
             
@@ -521,16 +613,16 @@ const BalanceSimulator: React.FC = () => {
                 {finalBalance !== null ? (
                     <Paper sx={{p: 2, mb: 3}}>
                         <Typography variant="h6" gutterBottom>
-                            Projected Balance on {targetDate}:{' '}
+                            Nominal Final Balance on {targetDate}:{' '}
                             {finalBalance.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
+                        </Typography>
+                        <Typography variant="body1" gutterBottom>
+                            Nominal Interest Gained:{' '}
+                            {interestGained.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
                         </Typography>
                         <Typography variant="body1" gutterBottom>
                             Total Deposited:{' '}
                             {totalDeposited.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
-                        </Typography>
-                        <Typography variant="body1" gutterBottom>
-                            Interest Gained:{' '}
-                            {interestGained.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
                         </Typography>
                         {simulationData.length > 0 && (
                             <Box sx={{mt: 3, height: 300, position: 'relative'}}>
@@ -542,6 +634,18 @@ const BalanceSimulator: React.FC = () => {
                                     }}
                                 />
                             </Box>
+                        )}
+                        {realFinalBalance !== null && (
+                            <>
+                                <Typography variant="h6" gutterBottom sx={{mt: 2}}>
+                                    Real Final Balance (Inflation-Adjusted):{' '}
+                                    {realFinalBalance.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
+                                </Typography>
+                                <Typography variant="body1" gutterBottom>
+                                    Real Interest Gained:{' '}
+                                    {realInterestGained.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
+                                </Typography>
+                            </>
                         )}
                     </Paper>
                 ) : (
@@ -569,7 +673,6 @@ const BalanceSimulator: React.FC = () => {
                         </Button>
                     </Stack>
                 </Paper>
-                
                 <Stack direction="row" spacing={2} sx={{mb: 3}}>
                     <Button variant="outlined" onClick={exportScenarios}>
                         Export Scenarios
@@ -579,7 +682,6 @@ const BalanceSimulator: React.FC = () => {
                         <input type="file" hidden accept="application/json" onChange={importScenarios}/>
                     </Button>
                 </Stack>
-
                 {scenarios.length > 0 ? (
                     <>
                         <Paper sx={{p: 2, mb: 3}}>
@@ -590,9 +692,9 @@ const BalanceSimulator: React.FC = () => {
                                 <TableHead>
                                     <TableRow>
                                         <TableCell>Name</TableCell>
-                                        <TableCell>Final Balance</TableCell>
+                                        <TableCell>Nominal Final Balance</TableCell>
                                         <TableCell>Total Deposited</TableCell>
-                                        <TableCell>Interest Gained</TableCell>
+                                        <TableCell>Nominal Interest</TableCell>
                                         <TableCell>Actions</TableCell>
                                     </TableRow>
                                 </TableHead>
@@ -613,7 +715,7 @@ const BalanceSimulator: React.FC = () => {
                                                 })}
                                             </TableCell>
                                             <TableCell>
-                                                {sc.interestGained.toLocaleString('en-US', {
+                                                {(sc.finalBalance - (initialBalance + sc.totalDeposited)).toLocaleString('en-US', {
                                                     style: 'currency',
                                                     currency: 'USD',
                                                 })}
@@ -639,7 +741,6 @@ const BalanceSimulator: React.FC = () => {
                                 </TableBody>
                             </Table>
                         </Paper>
-                        
                         <Paper sx={{p: 2}}>
                             <Typography variant="h6" gutterBottom>
                                 Combined Scenario Chart
