@@ -17,6 +17,8 @@ import {
     Stack,
     IconButton,
     Grid,
+    Tabs,
+    Tab,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import {Line} from 'react-chartjs-2';
@@ -30,9 +32,38 @@ import {
     Tooltip,
     Legend,
 } from 'chart.js';
+import AdvancedSettings, {CompoundingFrequency} from './components/AdvancedSettings';
+import ScenarioComparison, {Scenario} from './components/ScenarioComparison';
+import GoalTracker from "./components/GoalTracker";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
+//
+// TabPanel Component (Integrated)
+//
+interface TabPanelProps {
+    children?: React.ReactNode;
+    index: number;
+    value: number;
+}
+
+const TabPanel: React.FC<TabPanelProps> = ({children, value, index}) => {
+    return (
+        <div
+            role="tabpanel"
+            hidden={value !== index}
+            id={`simple-tabpanel-${index}`}
+            aria-labelledby={`simple-tab-${index}`}
+            style={{paddingTop: 16}}
+        >
+            {value === index && <Box>{children}</Box>}
+        </div>
+    );
+};
+
+//
+// Interfaces and Helper Functions
+//
 interface Deposit {
     amount: number;
     date: Date;
@@ -51,24 +82,21 @@ interface SimulationResult {
     totalDeposited: number;
 }
 
-export const isSameDate = (d1: Date, d2: Date): boolean =>
+// Compare two dates (ignoring time)
+const isSameDate = (d1: Date, d2: Date): boolean =>
     d1.getFullYear() === d2.getFullYear() &&
     d1.getMonth() === d2.getMonth() &&
     d1.getDate() === d2.getDate();
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-});
-
+// Simulation function with compounding frequency support
 const simulateBalanceOverTime = (
     initialBalance: number,
     apy: number,
     start: Date,
     target: Date,
-    deposits: Deposit[]
+    deposits: Deposit[],
+    frequency: CompoundingFrequency
 ): SimulationResult => {
-    const dailyRate = Math.pow(1 + apy, 1 / 365) - 1;
     let balance = initialBalance;
     let currentDate = new Date(start);
     const simulation: SimulationPoint[] = [];
@@ -76,8 +104,22 @@ const simulateBalanceOverTime = (
     let totalDeposited = 0;
 
     while (currentDate <= target) {
-        balance *= 1 + dailyRate;
-        
+        // Determine interest factor based on frequency
+        let interestFactor = 1;
+        if (frequency === 'daily') {
+            interestFactor = 1 + (Math.pow(1 + apy, 1 / 365) - 1);
+        } else if (frequency === 'monthly') {
+            // For monthly compounding, compound on the 1st of each month
+            interestFactor =
+                currentDate.getDate() === 1 ? Math.pow(1 + apy, 1 / 12) : 1;
+        } else if (frequency === 'yearly') {
+            // For yearly compounding, compound on January 1
+            interestFactor =
+                currentDate.getMonth() === 0 && currentDate.getDate() === 1 ? 1 + apy : 1;
+        }
+        balance *= interestFactor;
+
+        // Process deposits for the day
         for (let i = 0; i < deposits.length; i++) {
             const dep = deposits[i];
             if (dep.recurring) {
@@ -93,6 +135,7 @@ const simulateBalanceOverTime = (
                 }
             }
         }
+
         simulation.push({date: currentDate.toISOString().split('T')[0], balance});
         currentDate.setDate(currentDate.getDate() + 1);
     }
@@ -101,21 +144,39 @@ const simulateBalanceOverTime = (
 };
 
 const BalanceSimulator: React.FC = () => {
+    const [tabValue, setTabValue] = useState<number>(0);
+    const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+        setTabValue(newValue);
+    };
+
+    // ----- Simulation Parameters -----
     const [initialBalance, setInitialBalance] = useState<number>(1000.0);
     const [apy, setApy] = useState<number>(0.137);
     const [startDate, setStartDate] = useState<string>('2025-01-01');
     const [targetDate, setTargetDate] = useState<string>('2025-12-31');
-    
+    const [goal, setGoal] = useState<number>(20000);
+
+    // ----- Advanced Settings -----
+    const [compoundingFrequency, setCompoundingFrequency] =
+        useState<CompoundingFrequency>('daily');
+
+    // ----- Deposits -----
     const [depositList, setDepositList] = useState<Deposit[]>([]);
     const [newDepositAmount, setNewDepositAmount] = useState<number>(250);
     const [newDepositDate, setNewDepositDate] = useState<string>('2025-04-08');
     const [newDepositRecurring, setNewDepositRecurring] = useState<boolean>(true);
-    
+
+    // ----- Simulation Results -----
     const [simulationData, setSimulationData] = useState<SimulationPoint[]>([]);
     const [finalBalance, setFinalBalance] = useState<number | null>(null);
     const [totalDeposited, setTotalDeposited] = useState<number>(0);
     const [interestGained, setInterestGained] = useState<number>(0);
-    
+
+    // ----- Scenario Comparison -----
+    const [scenarios, setScenarios] = useState<Scenario[]>([]);
+    const [scenarioName, setScenarioName] = useState<string>('');
+
+    // ----- CSV Handling -----
     const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -123,8 +184,7 @@ const BalanceSimulator: React.FC = () => {
             header: true,
             skipEmptyLines: true,
             complete: (results) => {
-                const data = results.data;
-                const deposits: Deposit[] = data.map((row: any) => {
+                const deposits: Deposit[] = results.data.map((row: any) => {
                     const parsedDate = new Date(row.Date);
                     return {
                         amount: parseFloat(row.Deposit),
@@ -154,7 +214,8 @@ const BalanceSimulator: React.FC = () => {
         link.click();
         document.body.removeChild(link);
     };
-    
+
+    // ----- Deposit Management -----
     const addDeposit = () => {
         const parsedDate = new Date(newDepositDate);
         const deposit: Deposit = {
@@ -169,17 +230,41 @@ const BalanceSimulator: React.FC = () => {
     const removeDeposit = (index: number) => {
         setDepositList((prev) => prev.filter((_, i) => i !== index));
     };
-    
+
+    // ----- Simulation Execution -----
     const handleSimulate = () => {
-        const start = new Date(startDate);
-        const target = new Date(targetDate);
-        const result = simulateBalanceOverTime(initialBalance, apy, start, target, depositList);
+        const result = simulateBalanceOverTime(
+            initialBalance,
+            apy,
+            new Date(startDate),
+            new Date(targetDate),
+            depositList,
+            compoundingFrequency
+        );
         setSimulationData(result.simulation);
         setFinalBalance(result.finalBalance);
         setTotalDeposited(result.totalDeposited);
         setInterestGained(result.finalBalance - (initialBalance + result.totalDeposited));
     };
-    
+
+    // ----- Scenario Saving -----
+    const handleSaveScenario = () => {
+        const name = scenarioName || prompt('Enter a name for this scenario:') || 'Unnamed Scenario';
+        if (finalBalance !== null) {
+            const newScenario: Scenario = {
+                name,
+                startDate,
+                targetDate,
+                finalBalance,
+                totalDeposited,
+                interestGained,
+            };
+            setScenarios([...scenarios, newScenario]);
+            setScenarioName('');
+        }
+    };
+
+    // ----- Chart Data -----
     const chartData = {
         labels: simulationData.map((point) => point.date),
         datasets: [
@@ -198,167 +283,277 @@ const BalanceSimulator: React.FC = () => {
             <Typography variant="h4" gutterBottom>
                 Savings Balance Simulator
             </Typography>
-            
-            <Paper sx={{p: 2, mb: 3}}>
-                <Typography variant="h6" gutterBottom>
-                    Simulation Settings
-                </Typography>
-                <Grid container spacing={2}>
-                    <Grid size={{xs: 12, sm: 6, md: 3}}>
-                        <TextField
-                            label="Initial Balance"
-                            type="number"
-                            fullWidth
-                            value={initialBalance}
-                            onChange={(e) => setInitialBalance(parseFloat(e.target.value))}
-                        />
-                    </Grid>
-                    <Grid size={{xs: 12, sm: 6, md: 3}}>
-                        <TextField
-                            label="APY (as decimal)"
-                            type="number"
-                            fullWidth
-                            value={apy}
-                            onChange={(e) => setApy(parseFloat(e.target.value))}
-                        />
-                    </Grid>
-                    <Grid size={{xs: 12, sm: 6, md: 3}}>
-                        <TextField
-                            label="Start Date"
-                            type="date"
-                            fullWidth
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            InputLabelProps={{shrink: true}}
-                        />
-                    </Grid>
-                    <Grid size={{xs: 12, sm: 6, md: 3}}>
-                        <TextField
-                            label="Target Date"
-                            type="date"
-                            fullWidth
-                            value={targetDate}
-                            onChange={(e) => setTargetDate(e.target.value)}
-                            InputLabelProps={{shrink: true}}
-                        />
-                    </Grid>
-                </Grid>
+
+            <Paper sx={{mb: 3}}>
+                <Tabs value={tabValue} onChange={handleTabChange} centered>
+                    <Tab label="Settings"/>
+                    <Tab label="Deposits"/>
+                    <Tab label="Results"/>
+                    <Tab label="Comparison"/>
+                </Tabs>
             </Paper>
+
+            <TabPanel value={tabValue} index={0}>
+                <Paper sx={{p: 2, mb: 3}}>
+                    <Typography variant="h6" gutterBottom>
+                        Simulation Settings
+                    </Typography>
+                    <Grid container spacing={2}>
+                        <Grid size={{xs: 12, sm: 6, md: 3}}>
+                            <TextField
+                                label="Initial Balance"
+                                type="number"
+                                fullWidth
+                                value={initialBalance}
+                                onChange={(e) => setInitialBalance(parseFloat(e.target.value))}
+                            />
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 6, md: 3}}>
+                            <TextField
+                                label="APY (as decimal)"
+                                type="number"
+                                fullWidth
+                                value={apy}
+                                onChange={(e) => setApy(parseFloat(e.target.value))}
+                            />
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 6, md: 3}}>
+                            <TextField
+                                label="Start Date"
+                                type="date"
+                                fullWidth
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                InputLabelProps={{shrink: true}}
+                            />
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 6, md: 3}}>
+                            <TextField
+                                label="Target Date"
+                                type="date"
+                                fullWidth
+                                value={targetDate}
+                                onChange={(e) => setTargetDate(e.target.value)}
+                                InputLabelProps={{shrink: true}}
+                            />
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 6, md: 3}}>
+                            <TextField
+                                label="Savings Goal"
+                                type="number"
+                                fullWidth
+                                value={goal}
+                                onChange={(e) => setGoal(parseFloat(e.target.value))}
+                            />
+                        </Grid>
+                    </Grid>
+                </Paper>
+
+                <AdvancedSettings
+                    compoundingFrequency={compoundingFrequency}
+                    setCompoundingFrequency={setCompoundingFrequency}
+                />
+            </TabPanel>
+
+            <TabPanel value={tabValue} index={1}>
+                <Paper sx={{p: 2, mb: 3}}>
+                    <Typography variant="h6" gutterBottom>
+                        Upload Deposits CSV
+                    </Typography>
+                    <Box sx={{my: 2}}>
+                        <Stack direction={{xs: 'column', sm: 'row'}} spacing={2}>
+                            <Button variant="contained" component="label">
+                                Upload CSV
+                                <input type="file" hidden accept=".csv" onChange={handleFileChange}/>
+                            </Button>
+                            <Button variant="outlined" onClick={downloadExampleCSV}>
+                                Download Example CSV
+                            </Button>
+                        </Stack>
+                    </Box>
+                </Paper>
+
+                <Paper sx={{p: 2, mb: 3}}>
+                    <Typography variant="h6" gutterBottom>
+                        Add a Deposit
+                    </Typography>
+                    <Grid container spacing={2} alignItems="center">
+                        <Grid size={{xs: 12, sm: 4, md: 3}}>
+                            <TextField
+                                label="Deposit Amount"
+                                type="number"
+                                fullWidth
+                                value={newDepositAmount}
+                                onChange={(e) => setNewDepositAmount(parseFloat(e.target.value))}
+                            />
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 4, md: 3}}>
+                            <TextField
+                                label="Deposit Date"
+                                type="date"
+                                fullWidth
+                                value={newDepositDate}
+                                onChange={(e) => setNewDepositDate(e.target.value)}
+                                InputLabelProps={{shrink: true}}
+                            />
+                        </Grid>
+                        <Grid size={{xs: 12, sm: 4, md: 3}}>
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={newDepositRecurring}
+                                        onChange={(e) => setNewDepositRecurring(e.target.checked)}
+                                    />
+                                }
+                                label="Recurring"
+                            />
+                        </Grid>
+                        <Grid size={{xs: 12, md: 3}}>
+                            <Button variant="outlined" fullWidth onClick={addDeposit}>
+                                Add Deposit
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </Paper>
+
+                {depositList.length > 0 && (
+                    <Paper sx={{p: 2}}>
+                        <Typography variant="subtitle1">Current Deposits:</Typography>
+                        <Box sx={{mt: 2, overflowX: 'auto'}}>
+                            <Table size="small" sx={{minWidth: 500}}>
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell>Amount</TableCell>
+                                        <TableCell>Date</TableCell>
+                                        <TableCell>Recurring</TableCell>
+                                        <TableCell>Actions</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {depositList.map((dep, idx) => (
+                                        <TableRow key={idx}>
+                                            <TableCell>{dep.amount}</TableCell>
+                                            <TableCell>{dep.date.toISOString().split('T')[0]}</TableCell>
+                                            <TableCell>{dep.recurring ? 'Yes' : 'No'}</TableCell>
+                                            <TableCell>
+                                                <IconButton color="error" onClick={() => removeDeposit(idx)}
+                                                            size="small">
+                                                    <DeleteIcon/>
+                                                </IconButton>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </Box>
+                    </Paper>
+                )}
+            </TabPanel>
+
+            <TabPanel value={tabValue} index={2}>
+                <Box sx={{textAlign: 'center', mb: 3}}>
+                    <Button variant="contained" size="large" onClick={handleSimulate}>
+                        Run Simulation
+                    </Button>
+                </Box>
+
+                {finalBalance !== null ? (
+                    <Paper sx={{p: 2, mb: 3}}>
+                        <Typography variant="h6" gutterBottom>
+                            Projected Balance on {targetDate}:{' '}
+                            {finalBalance.toLocaleString('en-US', {
+                                style: 'currency',
+                                currency: 'USD',
+                            })}
+                        </Typography>
+                        <Typography variant="body1" gutterBottom>
+                            Total Deposited:{' '}
+                            {totalDeposited.toLocaleString('en-US', {
+                                style: 'currency',
+                                currency: 'USD',
+                            })}
+                        </Typography>
+                        <Typography variant="body1" gutterBottom>
+                            Interest Gained:{' '}
+                            {interestGained.toLocaleString('en-US', {
+                                style: 'currency',
+                                currency: 'USD',
+                            })}
+                        </Typography>
+                        {simulationData.length > 0 && (
+                            <Box sx={{mt: 3}}>
+                                <Line
+                                    data={chartData}
+                                    options={{
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                    }}
+                                    height={300}
+                                />
+                            </Box>
+                        )}
+                    </Paper>
+                ) : (
+                    <Typography variant="body1">
+                        No simulation results yet. Please run the simulation first.
+                    </Typography>
+                )}
+
+                {finalBalance !== null && (
+                    <GoalTracker goal={goal} currentBalance={finalBalance}/>
+                )}
+            </TabPanel>
             
-            <Paper sx={{p: 2, mb: 3}}>
-                <Typography variant="h6" gutterBottom>
-                    Deposits
-                </Typography>
-                <Box sx={{my: 2}}>
-                    <Stack direction={{xs: 'column', sm: 'row'}} spacing={2}>
-                        <Button variant="contained" component="label">
-                            Upload CSV
-                            <input type="file" hidden accept=".csv" onChange={handleFileChange}/>
-                        </Button>
-                        <Button variant="outlined" onClick={downloadExampleCSV}>
-                            Download Example CSV
+            <TabPanel value={tabValue} index={3}>
+                <Paper sx={{p: 2, mb: 3}}>
+                    <Typography variant="h6" gutterBottom>
+                        Save Current Scenario
+                    </Typography>
+                    <Stack direction="row" spacing={2}>
+                        <TextField
+                            label="Scenario Name"
+                            value={scenarioName}
+                            onChange={(e) => setScenarioName(e.target.value)}
+                            sx={{width: '40%', mr: 2}}
+                        />
+                        <Button variant="outlined" onClick={handleSaveScenario} disabled={finalBalance === null}>
+                            Save Scenario
                         </Button>
                     </Stack>
-                </Box>
-                <Grid container spacing={2} alignItems="center">
-                    <Grid size={{xs: 12, sm: 4, md: 3}}>
-                        <TextField
-                            label="Deposit Amount"
-                            type="number"
-                            fullWidth
-                            value={newDepositAmount}
-                            onChange={(e) => setNewDepositAmount(parseFloat(e.target.value))}
-                        />
-                    </Grid>
-                    <Grid size={{xs: 12, sm: 4, md: 3}}>
-                        <TextField
-                            label="Deposit Date"
-                            type="date"
-                            fullWidth
-                            value={newDepositDate}
-                            onChange={(e) => setNewDepositDate(e.target.value)}
-                            InputLabelProps={{shrink: true}}
-                        />
-                    </Grid>
-                    <Grid size={{xs: 12, sm: 4, md: 3}}>
-                        <FormControlLabel
-                            control={
-                                <Checkbox
-                                    checked={newDepositRecurring}
-                                    onChange={(e) => setNewDepositRecurring(e.target.checked)}
-                                />
-                            }
-                            label="Recurring"
-                        />
-                    </Grid>
-                    <Grid size={{xs: 12, md: 3}}>
-                        <Button variant="outlined" fullWidth onClick={addDeposit}>
-                            Add Deposit
-                        </Button>
-                    </Grid>
-                </Grid>
-                {depositList.length > 0 && (
-                    <Box sx={{mt: 3, overflowX: 'auto'}}>
-                        <Typography variant="subtitle1">Current Deposits:</Typography>
-                        <Table size="small" sx={{minWidth: 500}}>
+                </Paper>
+
+                {scenarios.length > 0 ? (
+                    <Paper sx={{p: 2}}>
+                        <Typography variant="h6" gutterBottom>
+                            Scenarios
+                        </Typography>
+                        <Table size="small">
                             <TableHead>
                                 <TableRow>
-                                    <TableCell>Amount</TableCell>
-                                    <TableCell>Date</TableCell>
-                                    <TableCell>Recurring</TableCell>
-                                    <TableCell>Actions</TableCell>
+                                    <TableCell>Name</TableCell>
+                                    <TableCell>Final Balance</TableCell>
+                                    <TableCell>Total Deposited</TableCell>
+                                    <TableCell>Interest Gained</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
-                                {depositList.map((dep, idx) => (
-                                    <TableRow key={idx}>
-                                        <TableCell>{dep.amount}</TableCell>
-                                        <TableCell>{dep.date.toISOString().split('T')[0]}</TableCell>
-                                        <TableCell>{dep.recurring ? 'Yes' : 'No'}</TableCell>
-                                        <TableCell>
-                                            <IconButton color="error" onClick={() => removeDeposit(idx)} size="small">
-                                                <DeleteIcon/>
-                                            </IconButton>
-                                        </TableCell>
+                                {scenarios.map((sc, i) => (
+                                    <TableRow key={i}>
+                                        <TableCell>{sc.name}</TableCell>
+                                        <TableCell>${sc.finalBalance.toFixed(2)}</TableCell>
+                                        <TableCell>${sc.totalDeposited.toFixed(2)}</TableCell>
+                                        <TableCell>${sc.interestGained.toFixed(2)}</TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
                         </Table>
-                    </Box>
+                    </Paper>
+                ) : (
+                    <Typography variant="body1">
+                        No saved scenarios. Run the simulation and save one.
+                    </Typography>
                 )}
-            </Paper>
-            
-            <Box sx={{textAlign: 'center', mb: 3}}>
-                <Button variant="contained" size="large" onClick={handleSimulate}>
-                    Run Simulation
-                </Button>
-            </Box>
-            
-            {finalBalance !== null && (
-                <Paper sx={{p: 2}}>
-                    <Typography variant="h6" gutterBottom>
-                        Projected Balance on {targetDate}: {currencyFormatter.format(finalBalance)}
-                    </Typography>
-                    <Typography variant="body1" gutterBottom>
-                        Total Deposited: {currencyFormatter.format(totalDeposited)}
-                    </Typography>
-                    <Typography variant="body1" gutterBottom>
-                        Interest Gained: {currencyFormatter.format(interestGained)}
-                    </Typography>
-                    {simulationData.length > 0 && (
-                        <Box sx={{mt: 3}}>
-                            <Line
-                                data={chartData}
-                                options={{
-                                    responsive: true,
-                                    maintainAspectRatio: false,
-                                }}
-                                height={300}
-                            />
-                        </Box>
-                    )}
-                </Paper>
-            )}
+            </TabPanel>
         </Container>
     );
 };
