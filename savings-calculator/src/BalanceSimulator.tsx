@@ -1,4 +1,4 @@
-import React, {useState, ChangeEvent} from 'react';
+import React, {useState, useMemo, ChangeEvent} from 'react';
 import Papa from 'papaparse';
 import {
     Container,
@@ -33,14 +33,11 @@ import {
     Legend,
 } from 'chart.js';
 import AdvancedSettings, {CompoundingFrequency} from './components/AdvancedSettings';
-import ScenarioComparison, {Scenario} from './components/ScenarioComparison';
+import {Scenario, SimulationPoint, Deposit, SimulationResult} from './types';
 import GoalTracker from "./components/GoalTracker";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
-//
-// TabPanel Component (Integrated)
-//
 interface TabPanelProps {
     children?: React.ReactNode;
     index: number;
@@ -60,27 +57,6 @@ const TabPanel: React.FC<TabPanelProps> = ({children, value, index}) => {
         </div>
     );
 };
-
-//
-// Interfaces and Helper Functions
-//
-interface Deposit {
-    amount: number;
-    date: Date;
-    recurring: boolean;
-    day: number;
-}
-
-interface SimulationPoint {
-    date: string;
-    balance: number;
-}
-
-interface SimulationResult {
-    simulation: SimulationPoint[];
-    finalBalance: number;
-    totalDeposited: number;
-}
 
 // Compare two dates (ignoring time)
 const isSameDate = (d1: Date, d2: Date): boolean =>
@@ -104,22 +80,16 @@ const simulateBalanceOverTime = (
     let totalDeposited = 0;
 
     while (currentDate <= target) {
-        // Determine interest factor based on frequency
         let interestFactor = 1;
         if (frequency === 'daily') {
             interestFactor = 1 + (Math.pow(1 + apy, 1 / 365) - 1);
         } else if (frequency === 'monthly') {
-            // For monthly compounding, compound on the 1st of each month
-            interestFactor =
-                currentDate.getDate() === 1 ? Math.pow(1 + apy, 1 / 12) : 1;
+            interestFactor = currentDate.getDate() === 1 ? Math.pow(1 + apy, 1 / 12) : 1;
         } else if (frequency === 'yearly') {
-            // For yearly compounding, compound on January 1
-            interestFactor =
-                currentDate.getMonth() === 0 && currentDate.getDate() === 1 ? 1 + apy : 1;
+            interestFactor = currentDate.getMonth() === 0 && currentDate.getDate() === 1 ? 1 + apy : 1;
         }
         balance *= interestFactor;
-
-        // Process deposits for the day
+        
         for (let i = 0; i < deposits.length; i++) {
             const dep = deposits[i];
             if (dep.recurring) {
@@ -144,6 +114,7 @@ const simulateBalanceOverTime = (
 };
 
 const BalanceSimulator: React.FC = () => {
+    // ----- Tab State -----
     const [tabValue, setTabValue] = useState<number>(0);
     const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
         setTabValue(newValue);
@@ -255,17 +226,33 @@ const BalanceSimulator: React.FC = () => {
                 name,
                 startDate,
                 targetDate,
+                simulationData: simulationData.map((point) => ({...point})),
                 finalBalance,
                 totalDeposited,
                 interestGained,
             };
-            setScenarios([...scenarios, newScenario]);
+            setScenarios((prev) => [...prev, newScenario]);
             setScenarioName('');
         }
     };
 
-    // ----- Chart Data -----
-    const chartData = {
+    // ----- Combined Scenario Chart Data -----
+    const scenarioChartData = useMemo(() => {
+        if (scenarios.length === 0) return {labels: [], datasets: []};
+        const labels = scenarios[0].simulationData.map((point) => point.date);
+        const colors = ['#1976d2', '#dc004e', '#2e7d32', '#ed6c02', '#8e24aa'];
+        const datasets = scenarios.map((sc, idx) => ({
+            label: sc.name,
+            data: sc.simulationData.map((point) => point.balance),
+            fill: false,
+            borderColor: colors[idx % colors.length],
+            tension: 0.1,
+        }));
+        return {labels, datasets};
+    }, [scenarios]);
+
+    // ----- Chart Data for Current Simulation -----
+    const currentChartData = {
         labels: simulationData.map((point) => point.date),
         datasets: [
             {
@@ -283,7 +270,7 @@ const BalanceSimulator: React.FC = () => {
             <Typography variant="h4" gutterBottom>
                 Savings Balance Simulator
             </Typography>
-
+            
             <Paper sx={{mb: 3}}>
                 <Tabs value={tabValue} onChange={handleTabChange} centered>
                     <Tab label="Settings"/>
@@ -292,7 +279,7 @@ const BalanceSimulator: React.FC = () => {
                     <Tab label="Comparison"/>
                 </Tabs>
             </Paper>
-
+            
             <TabPanel value={tabValue} index={0}>
                 <Paper sx={{p: 2, mb: 3}}>
                     <Typography variant="h6" gutterBottom>
@@ -354,7 +341,7 @@ const BalanceSimulator: React.FC = () => {
                     setCompoundingFrequency={setCompoundingFrequency}
                 />
             </TabPanel>
-
+            
             <TabPanel value={tabValue} index={1}>
                 <Paper sx={{p: 2, mb: 3}}>
                     <Typography variant="h6" gutterBottom>
@@ -449,7 +436,7 @@ const BalanceSimulator: React.FC = () => {
                     </Paper>
                 )}
             </TabPanel>
-
+            
             <TabPanel value={tabValue} index={2}>
                 <Box sx={{textAlign: 'center', mb: 3}}>
                     <Button variant="contained" size="large" onClick={handleSimulate}>
@@ -483,7 +470,7 @@ const BalanceSimulator: React.FC = () => {
                         {simulationData.length > 0 && (
                             <Box sx={{mt: 3}}>
                                 <Line
-                                    data={chartData}
+                                    data={currentChartData}
                                     options={{
                                         responsive: true,
                                         maintainAspectRatio: false,
@@ -523,31 +510,63 @@ const BalanceSimulator: React.FC = () => {
                 </Paper>
 
                 {scenarios.length > 0 ? (
-                    <Paper sx={{p: 2}}>
-                        <Typography variant="h6" gutterBottom>
-                            Scenarios
-                        </Typography>
-                        <Table size="small">
-                            <TableHead>
-                                <TableRow>
-                                    <TableCell>Name</TableCell>
-                                    <TableCell>Final Balance</TableCell>
-                                    <TableCell>Total Deposited</TableCell>
-                                    <TableCell>Interest Gained</TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                {scenarios.map((sc, i) => (
-                                    <TableRow key={i}>
-                                        <TableCell>{sc.name}</TableCell>
-                                        <TableCell>${sc.finalBalance.toFixed(2)}</TableCell>
-                                        <TableCell>${sc.totalDeposited.toFixed(2)}</TableCell>
-                                        <TableCell>${sc.interestGained.toFixed(2)}</TableCell>
+                    <>
+                        <Paper sx={{p: 2, mb: 3}}>
+                            <Typography variant="h6" gutterBottom>
+                                Scenarios
+                            </Typography>
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell>Name</TableCell>
+                                        <TableCell>Final Balance</TableCell>
+                                        <TableCell>Total Deposited</TableCell>
+                                        <TableCell>Interest Gained</TableCell>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </Paper>
+                                </TableHead>
+                                <TableBody>
+                                    {scenarios.map((sc, i) => (
+                                        <TableRow key={i}>
+                                            <TableCell>{sc.name}</TableCell>
+                                            <TableCell>
+                                                {sc.finalBalance.toLocaleString('en-US', {
+                                                    style: 'currency',
+                                                    currency: 'USD',
+                                                })}
+                                            </TableCell>
+                                            <TableCell>
+                                                {sc.totalDeposited.toLocaleString('en-US', {
+                                                    style: 'currency',
+                                                    currency: 'USD',
+                                                })}
+                                            </TableCell>
+                                            <TableCell>
+                                                {sc.interestGained.toLocaleString('en-US', {
+                                                    style: 'currency',
+                                                    currency: 'USD',
+                                                })}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </Paper>
+
+                        <Paper sx={{p: 2}}>
+                            <Typography variant="h6" gutterBottom>
+                                Combined Scenario Chart
+                            </Typography>
+                            <Box sx={{height: 300, position: 'relative'}}>
+                                <Line
+                                    data={scenarioChartData}
+                                    options={{
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                    }}
+                                />
+                            </Box>
+                        </Paper>
+                    </>
                 ) : (
                     <Typography variant="body1">
                         No saved scenarios. Run the simulation and save one.

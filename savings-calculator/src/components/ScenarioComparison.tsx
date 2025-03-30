@@ -1,10 +1,12 @@
 import React from 'react';
 import {Paper, Typography, Table, TableHead, TableRow, TableCell, TableBody} from '@mui/material';
+import {SimulationPoint} from "../types";
 
 export interface Scenario {
     name: string;
     startDate: string;
     targetDate: string;
+    simulationData: SimulationPoint[];
     finalBalance: number;
     totalDeposited: number;
     interestGained: number;
