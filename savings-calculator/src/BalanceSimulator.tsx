@@ -45,62 +45,98 @@ interface SimulationPoint {
     balance: number;
 }
 
-const isSameDate = (d1: Date, d2: Date): boolean =>
-    d1.getFullYear() === d2.getFullYear() &&
-    d1.getMonth() === d2.getMonth() &&
-    d1.getDate() === d2.getDate();
-
 interface SimulationResult {
     simulation: SimulationPoint[];
     finalBalance: number;
     totalDeposited: number;
 }
 
+export const isSameDate = (d1: Date, d2: Date): boolean =>
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
+
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+});
+
+const simulateBalanceOverTime = (
+    initialBalance: number,
+    apy: number,
+    start: Date,
+    target: Date,
+    deposits: Deposit[]
+): SimulationResult => {
+    const dailyRate = Math.pow(1 + apy, 1 / 365) - 1;
+    let balance = initialBalance;
+    let currentDate = new Date(start);
+    const simulation: SimulationPoint[] = [];
+    const oneTimeAdded: boolean[] = new Array(deposits.length).fill(false);
+    let totalDeposited = 0;
+
+    while (currentDate <= target) {
+        balance *= 1 + dailyRate;
+        
+        for (let i = 0; i < deposits.length; i++) {
+            const dep = deposits[i];
+            if (dep.recurring) {
+                if (currentDate >= dep.date && currentDate.getDate() === dep.day) {
+                    balance += dep.amount;
+                    totalDeposited += dep.amount;
+                }
+            } else {
+                if (!oneTimeAdded[i] && isSameDate(currentDate, dep.date)) {
+                    balance += dep.amount;
+                    oneTimeAdded[i] = true;
+                    totalDeposited += dep.amount;
+                }
+            }
+        }
+        simulation.push({date: currentDate.toISOString().split('T')[0], balance});
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return {simulation, finalBalance: balance, totalDeposited};
+};
+
 const BalanceSimulator: React.FC = () => {
-    // Simulation parameters
     const [initialBalance, setInitialBalance] = useState<number>(1000.0);
     const [apy, setApy] = useState<number>(0.137);
     const [startDate, setStartDate] = useState<string>('2025-01-01');
     const [targetDate, setTargetDate] = useState<string>('2025-12-31');
-
+    
     const [depositList, setDepositList] = useState<Deposit[]>([]);
-
     const [newDepositAmount, setNewDepositAmount] = useState<number>(250);
     const [newDepositDate, setNewDepositDate] = useState<string>('2025-04-08');
     const [newDepositRecurring, setNewDepositRecurring] = useState<boolean>(true);
-
+    
     const [simulationData, setSimulationData] = useState<SimulationPoint[]>([]);
     const [finalBalance, setFinalBalance] = useState<number | null>(null);
     const [totalDeposited, setTotalDeposited] = useState<number>(0);
     const [interestGained, setInterestGained] = useState<number>(0);
-    const currencyFormatter = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-    });
+    
     const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            Papa.parse(file, {
-                header: true,
-                skipEmptyLines: true,
-                complete: (results) => {
-                    const data = results.data;
-                    const deposits: Deposit[] = data.map((row: any) => {
-                        const parsedDate = new Date(row.Date);
-                        return {
-                            amount: parseFloat(row.Deposit),
-                            date: parsedDate,
-                            recurring: row.Recurring.trim().toUpperCase() === 'Y',
-                            day: parsedDate.getDate(),
-                        };
-                    });
-                    setDepositList((prev) => [...prev, ...deposits]);
-                },
-                error: (error) => {
-                    console.error('Error parsing CSV:', error);
-                },
-            });
-        }
+        if (!file) return;
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (results) => {
+                const data = results.data;
+                const deposits: Deposit[] = data.map((row: any) => {
+                    const parsedDate = new Date(row.Date);
+                    return {
+                        amount: parseFloat(row.Deposit),
+                        date: parsedDate,
+                        recurring: row.Recurring.trim().toUpperCase() === 'Y',
+                        day: parsedDate.getDate(),
+                    };
+                });
+                setDepositList((prev) => [...prev, ...deposits]);
+            },
+            error: (error) => console.error('Error parsing CSV:', error),
+        });
     };
 
     const downloadExampleCSV = () => {
@@ -118,7 +154,7 @@ const BalanceSimulator: React.FC = () => {
         link.click();
         document.body.removeChild(link);
     };
-
+    
     const addDeposit = () => {
         const parsedDate = new Date(newDepositDate);
         const deposit: Deposit = {
@@ -133,47 +169,7 @@ const BalanceSimulator: React.FC = () => {
     const removeDeposit = (index: number) => {
         setDepositList((prev) => prev.filter((_, i) => i !== index));
     };
-
-    const simulateBalanceOverTime = (
-        initialBalance: number,
-        apy: number,
-        start: Date,
-        target: Date,
-        deposits: Deposit[]
-    ): SimulationResult => {
-        const dailyRate = Math.pow(1 + apy, 1 / 365) - 1;
-        let balance = initialBalance;
-        let currentDate = new Date(start);
-        const simulation: SimulationPoint[] = [];
-        const oneTimeAdded: boolean[] = new Array(deposits.length).fill(false);
-        let totalDeposited = 0;
-
-        while (currentDate <= target) {
-            // Compound interest for the day
-            balance *= 1 + dailyRate;
-
-            // Process deposits for today
-            for (let i = 0; i < deposits.length; i++) {
-                const dep = deposits[i];
-                if (dep.recurring) {
-                    if (currentDate >= dep.date && currentDate.getDate() === dep.day) {
-                        balance += dep.amount;
-                        totalDeposited += dep.amount;
-                    }
-                } else {
-                    if (!oneTimeAdded[i] && isSameDate(currentDate, dep.date)) {
-                        balance += dep.amount;
-                        oneTimeAdded[i] = true;
-                        totalDeposited += dep.amount;
-                    }
-                }
-            }
-            simulation.push({date: currentDate.toISOString().split('T')[0], balance});
-            currentDate.setDate(currentDate.getDate() + 1);
-        }
-        return {simulation, finalBalance: balance, totalDeposited};
-    };
-
+    
     const handleSimulate = () => {
         const start = new Date(startDate);
         const target = new Date(targetDate);
@@ -183,7 +179,7 @@ const BalanceSimulator: React.FC = () => {
         setTotalDeposited(result.totalDeposited);
         setInterestGained(result.finalBalance - (initialBalance + result.totalDeposited));
     };
-
+    
     const chartData = {
         labels: simulationData.map((point) => point.date),
         datasets: [
@@ -202,8 +198,7 @@ const BalanceSimulator: React.FC = () => {
             <Typography variant="h4" gutterBottom>
                 Savings Balance Simulator
             </Typography>
-
-            {/* Simulation Settings */}
+            
             <Paper sx={{p: 2, mb: 3}}>
                 <Typography variant="h6" gutterBottom>
                     Simulation Settings
@@ -249,8 +244,7 @@ const BalanceSimulator: React.FC = () => {
                     </Grid>
                 </Grid>
             </Paper>
-
-            {/* Deposits */}
+            
             <Paper sx={{p: 2, mb: 3}}>
                 <Typography variant="h6" gutterBottom>
                     Deposits
@@ -333,13 +327,13 @@ const BalanceSimulator: React.FC = () => {
                     </Box>
                 )}
             </Paper>
-
+            
             <Box sx={{textAlign: 'center', mb: 3}}>
                 <Button variant="contained" size="large" onClick={handleSimulate}>
                     Run Simulation
                 </Button>
             </Box>
-
+            
             {finalBalance !== null && (
                 <Paper sx={{p: 2}}>
                     <Typography variant="h6" gutterBottom>
