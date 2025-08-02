@@ -20,8 +20,17 @@ import {
     Checkbox,
     FormControlLabel,
     Modal,
+    CircularProgress,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import InfoIcon from '@mui/icons-material/Info';
+import UploadIcon from '@mui/icons-material/Upload';
+import DownloadIcon from '@mui/icons-material/Download';
+import AddIcon from '@mui/icons-material/Add';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import SaveIcon from '@mui/icons-material/Save';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import FileUploadIcon from '@mui/icons-material/FileUpload';
 import {Line} from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -201,6 +210,7 @@ const BalanceSimulator: React.FC = () => {
     const [interestGained, setInterestGained] = useState<number>(0);
     const [realFinalBalance, setRealFinalBalance] = useState<number | null>(null);
     const [realInterestGained, setRealInterestGained] = useState<number>(0);
+    const [isSimulating, setIsSimulating] = useState<boolean>(false);
 
     // ----- Scenario Comparison -----
     const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -262,7 +272,12 @@ const BalanceSimulator: React.FC = () => {
     };
 
     // ----- Simulation Execution -----
-    const handleSimulate = React.useCallback(() => {
+    const handleSimulate = React.useCallback(async () => {
+        setIsSimulating(true);
+        
+        // Simulate processing time for better UX
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         const result = simulateBalanceOverTime(
             initialBalance,
             apy,
@@ -292,6 +307,8 @@ const BalanceSimulator: React.FC = () => {
         } else {
             setTaxSuggestion(null);
         }
+        
+        setIsSimulating(false);
     }, [initialBalance, apy, startDate, targetDate, depositList, compoundingFrequency, taxRate, inflationRate]);
 
     // ----- Tax Suggestion State -----
@@ -446,18 +463,35 @@ const BalanceSimulator: React.FC = () => {
     };
 
     return (
-        <Container maxWidth="md" sx={{py: 4}}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{mb: 2}}>
-                <Typography variant="h4">Savings Balance Simulator</Typography>
-                <Button variant="outlined" onClick={() => setHelpOpen(true)}>
-                    Help
-                </Button>
-            </Stack>
+        <Box>
+            <Typography 
+                variant="h4" 
+                sx={{ 
+                    textAlign: { xs: 'center', sm: 'left' },
+                    fontSize: { xs: '1.75rem', sm: '2.125rem' },
+                    mb: 3
+                }}
+            >
+                Savings Calculator
+            </Typography>
 
             <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)}/>
 
-            <Paper sx={{mb: 3}}>
-                <Tabs value={tabValue} onChange={handleTabChange} centered>
+            <Paper sx={{mb: 3, overflow: 'hidden'}}>
+                <Tabs 
+                    value={tabValue} 
+                    onChange={handleTabChange} 
+                    variant="scrollable"
+                    scrollButtons="auto"
+                    allowScrollButtonsMobile
+                    sx={{
+                        '& .MuiTab-root': {
+                            minWidth: { xs: 'auto', sm: 120 },
+                            fontSize: { xs: '0.875rem', sm: '1rem' },
+                            fontWeight: 500,
+                        }
+                    }}
+                >
                     <Tab label="Settings"/>
                     <Tab label="Deposits"/>
                     <Tab label="Results"/>
@@ -466,30 +500,48 @@ const BalanceSimulator: React.FC = () => {
             </Paper>
 
             <TabPanel value={tabValue} index={0}>
-                <Paper sx={{p: 2, mb: 3}}>
-                    <Typography variant="h6" gutterBottom>
+                <Paper sx={{p: { xs: 2, md: 3 }, mb: 3}}>
+                    <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
                         Simulation Settings
                     </Typography>
-                    <Grid container spacing={2}>
-                        <Grid size={{xs: 12, sm: 6, md: 3}}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                        <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
                             <TextField
                                 label="Initial Balance"
                                 type="number"
                                 fullWidth
                                 value={initialBalance}
                                 onChange={(e) => setInitialBalance(parseFloat(e.target.value))}
+                                InputProps={{
+                                    startAdornment: <Typography variant="body2" sx={{ mr: 1 }}>$</Typography>,
+                                }}
                             />
-                        </Grid>
-                        <Grid size={{xs: 12, sm: 6, md: 3}}>
+                        </Box>
+                        <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
                             <TextField
-                                label="APY (as decimal)"
+                                label="APY (%)"
                                 type="number"
                                 fullWidth
-                                value={apy}
-                                onChange={(e) => setApy(parseFloat(e.target.value))}
+                                value={(apy * 100).toFixed(2)}
+                                onChange={(e) => setApy(parseFloat(e.target.value) / 100)}
+                                InputProps={{
+                                    endAdornment: <Typography variant="body2" sx={{ ml: 1 }}>%</Typography>,
+                                }}
                             />
-                        </Grid>
-                        <Grid size={{xs: 12, sm: 6, md: 3}}>
+                        </Box>
+                        <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
+                            <TextField
+                                label="Savings Goal"
+                                type="number"
+                                fullWidth
+                                value={goal}
+                                onChange={(e) => setGoal(parseFloat(e.target.value))}
+                                InputProps={{
+                                    startAdornment: <Typography variant="body2" sx={{ mr: 1 }}>$</Typography>,
+                                }}
+                            />
+                        </Box>
+                        <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
                             <TextField
                                 label="Start Date"
                                 type="date"
@@ -498,8 +550,8 @@ const BalanceSimulator: React.FC = () => {
                                 onChange={(e) => setStartDate(e.target.value)}
                                 InputLabelProps={{shrink: true}}
                             />
-                        </Grid>
-                        <Grid size={{xs: 12, sm: 6, md: 3}}>
+                        </Box>
+                        <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
                             <TextField
                                 label="Target Date"
                                 type="date"
@@ -508,17 +560,8 @@ const BalanceSimulator: React.FC = () => {
                                 onChange={(e) => setTargetDate(e.target.value)}
                                 InputLabelProps={{shrink: true}}
                             />
-                        </Grid>
-                        <Grid size={{xs: 12, sm: 6, md: 3}}>
-                            <TextField
-                                label="Savings Goal"
-                                type="number"
-                                fullWidth
-                                value={goal}
-                                onChange={(e) => setGoal(parseFloat(e.target.value))}
-                            />
-                        </Grid>
-                    </Grid>
+                        </Box>
+                    </Box>
                 </Paper>
                 <AdvancedSettings
                     compoundingFrequency={compoundingFrequency}
@@ -531,37 +574,50 @@ const BalanceSimulator: React.FC = () => {
             </TabPanel>
 
             <TabPanel value={tabValue} index={1}>
-                <Paper sx={{p: 2, mb: 3}}>
-                    <Typography variant="h6" gutterBottom>
+                <Paper sx={{p: { xs: 2, md: 3 }, mb: 3}}>
+                    <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
                         Upload Deposits CSV
                     </Typography>
                     <Box sx={{my: 2}}>
                         <Stack direction={{xs: 'column', sm: 'row'}} spacing={2}>
-                            <Button variant="contained" component="label">
+                            <Button 
+                                variant="contained" 
+                                component="label"
+                                startIcon={<UploadIcon />}
+                                sx={{ minWidth: { xs: '100%', sm: 'auto' } }}
+                            >
                                 Upload CSV
                                 <input type="file" hidden accept=".csv" onChange={handleFileChange}/>
                             </Button>
-                            <Button variant="outlined" onClick={downloadExampleCSV}>
+                            <Button 
+                                variant="outlined" 
+                                onClick={downloadExampleCSV}
+                                startIcon={<DownloadIcon />}
+                                sx={{ minWidth: { xs: '100%', sm: 'auto' } }}
+                            >
                                 Download Example CSV
                             </Button>
                         </Stack>
                     </Box>
                 </Paper>
-                <Paper sx={{p: 2, mb: 3}}>
-                    <Typography variant="h6" gutterBottom>
+                <Paper sx={{p: { xs: 2, md: 3 }, mb: 3}}>
+                    <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
                         Add a Deposit
                     </Typography>
-                    <Grid container spacing={2} alignItems="center">
-                        <Grid size={{xs: 12, sm: 4, md: 3}}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'center' }}>
+                        <Box sx={{ flex: '1 1 250px', minWidth: 0 }}>
                             <TextField
                                 label="Deposit Amount"
                                 type="number"
                                 fullWidth
                                 value={newDepositAmount}
                                 onChange={(e) => setNewDepositAmount(parseFloat(e.target.value))}
+                                InputProps={{
+                                    startAdornment: <Typography variant="body2" sx={{ mr: 1 }}>$</Typography>,
+                                }}
                             />
-                        </Grid>
-                        <Grid size={{xs: 12, sm: 4, md: 3}}>
+                        </Box>
+                        <Box sx={{ flex: '1 1 250px', minWidth: 0 }}>
                             <TextField
                                 label="Deposit Date"
                                 type="date"
@@ -570,8 +626,8 @@ const BalanceSimulator: React.FC = () => {
                                 onChange={(e) => setNewDepositDate(e.target.value)}
                                 InputLabelProps={{shrink: true}}
                             />
-                        </Grid>
-                        <Grid size={{xs: 12, sm: 4, md: 3}}>
+                        </Box>
+                        <Box sx={{ flex: '1 1 250px', minWidth: 0 }}>
                             <FormControlLabel
                                 control={
                                     <Checkbox
@@ -581,109 +637,212 @@ const BalanceSimulator: React.FC = () => {
                                 }
                                 label="Recurring"
                             />
-                        </Grid>
-                        <Grid size={{xs: 12, md: 3}}>
-                            <Button variant="outlined" fullWidth onClick={addDeposit}>
+                        </Box>
+                        <Box sx={{ flex: '1 1 250px', minWidth: 0 }}>
+                            <Button 
+                                variant="contained" 
+                                fullWidth 
+                                onClick={addDeposit}
+                                startIcon={<AddIcon />}
+                            >
                                 Add Deposit
                             </Button>
-                        </Grid>
-                    </Grid>
+                        </Box>
+                    </Box>
                 </Paper>
                 {depositList.length > 0 && (
-                    <Paper sx={{p: 2}}>
-                        <Typography variant="subtitle1">Current Deposits:</Typography>
-                        <Box sx={{mt: 2, overflowX: 'auto'}}>
-                            <Table size="small" sx={{minWidth: 500}}>
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell>Amount</TableCell>
-                                        <TableCell>Date</TableCell>
-                                        <TableCell>Recurring</TableCell>
-                                        <TableCell>Actions</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {depositList.map((dep, idx) => (
-                                        <TableRow key={idx}>
-                                            <TableCell>{dep.amount}</TableCell>
-                                            <TableCell>{dep.date.toISOString().split('T')[0]}</TableCell>
-                                            <TableCell>{dep.recurring ? 'Yes' : 'No'}</TableCell>
-                                            <TableCell>
-                                                <IconButton color="error" onClick={() => removeDeposit(idx)}
-                                                            size="small">
-                                                    <DeleteIcon/>
-                                                </IconButton>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                    <Paper sx={{p: { xs: 2, md: 3 }}}>
+                        <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+                            Current Deposits ({depositList.length})
+                        </Typography>
+                        <Box sx={{mt: 2}}>
+                            {depositList.map((dep, idx) => (
+                                <Paper 
+                                    key={idx} 
+                                    sx={{ 
+                                        p: 2, 
+                                        mb: 2, 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center',
+                                        flexDirection: { xs: 'column', sm: 'row' },
+                                        gap: 2
+                                    }}
+                                >
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                        <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 'bold' }}>
+                                            ${dep.amount.toLocaleString()}
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                            {dep.date.toLocaleDateString()} • {dep.recurring ? 'Recurring' : 'One-time'}
+                                        </Typography>
+                                    </Box>
+                                    <IconButton 
+                                        color="error" 
+                                        onClick={() => removeDeposit(idx)}
+                                        sx={{ 
+                                            bgcolor: 'error.light', 
+                                            color: 'white',
+                                            '&:hover': { bgcolor: 'error.main' }
+                                        }}
+                                    >
+                                        <DeleteIcon/>
+                                    </IconButton>
+                                </Paper>
+                            ))}
                         </Box>
                     </Paper>
                 )}
             </TabPanel>
 
             <TabPanel value={tabValue} index={2}>
-                <Box sx={{textAlign: 'center', mb: 3}}>
-                    <Button variant="contained" size="large" onClick={handleSimulate}>
-                        Run Simulation
+                <Box sx={{textAlign: 'center', mb: 4}}>
+                    <Button 
+                        variant="contained" 
+                        size="large" 
+                        onClick={handleSimulate}
+                        disabled={isSimulating}
+                        startIcon={isSimulating ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
+                        sx={{ 
+                            px: 6, 
+                            py: 2,
+                            fontSize: '1.2rem',
+                            borderRadius: 4
+                        }}
+                    >
+                        {isSimulating ? 'Running Simulation...' : 'Run Simulation'}
                     </Button>
                 </Box>
                 {taxSuggestion !== null && (
-                    <Paper sx={{p: 2, mb: 3, bgcolor: '#fff3cd'}}>
-                        <Typography variant="body1">
+                    <Paper sx={{
+                        p: { xs: 2, md: 3 }, 
+                        mb: 3, 
+                        bgcolor: 'warning.light',
+                        border: '1px solid',
+                        borderColor: 'warning.main',
+                        borderRadius: 2
+                    }}>
+                        <Typography variant="h6" gutterBottom sx={{ color: 'warning.dark' }}>
+                            💡 Tax Rate Suggestion
+                        </Typography>
+                        <Typography variant="body1" sx={{ mb: 2 }}>
                             Based on your approximate pre‑tax interest, a tax bracket
                             of <strong>{taxSuggestion}%</strong> might apply
                             instead of <strong>{taxRate}%</strong>. Would you like to update?
                         </Typography>
-                        <Stack direction="row" spacing={2} sx={{mt: 1}}>
-                            <Button variant="outlined" onClick={applySuggestedTaxRate}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                            <Button 
+                                variant="contained" 
+                                onClick={applySuggestedTaxRate}
+                                sx={{ 
+                                    bgcolor: 'warning.main',
+                                    '&:hover': { bgcolor: 'warning.dark' }
+                                }}
+                            >
                                 Accept {taxSuggestion}%
                             </Button>
-                            <Button variant="outlined" onClick={() => setTaxSuggestion(null)}>
+                            <Button 
+                                variant="outlined" 
+                                onClick={() => setTaxSuggestion(null)}
+                                sx={{ borderColor: 'warning.main', color: 'warning.main' }}
+                            >
                                 Ignore
                             </Button>
                         </Stack>
                     </Paper>
                 )}
                 {finalBalance !== null ? (
-                    <Paper sx={{p: 2, mb: 3}}>
-                        <Typography variant="h6" gutterBottom>
-                            Nominal Final Balance on {targetDate}:{' '}
-                            {finalBalance.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
-                        </Typography>
-                        <Typography variant="body1" gutterBottom>
-                            Nominal Interest Gained:{' '}
-                            {interestGained.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
-                        </Typography>
-                        <Typography variant="body1" gutterBottom>
-                            Total Deposited:{' '}
-                            {totalDeposited.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
-                        </Typography>
-                        {simulationData.length > 0 && (
-                            <Box sx={{mt: 3, height: 300, position: 'relative'}}>
-                                <Line
-                                    data={currentChartData}
-                                    options={{
-                                        responsive: true,
-                                        maintainAspectRatio: false,
-                                    }}
-                                />
+                    <>
+                                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, mb: 3 }}>
+                            <Box sx={{ flex: '1 1 250px', minWidth: 0 }}>
+                                <Paper sx={{ 
+                                    p: 4, 
+                                    textAlign: 'center', 
+                                    bgcolor: 'primary.main',
+                                    color: 'white'
+                                }}>
+                                    <Typography variant="h6" gutterBottom>
+                                        Final Balance
+                                    </Typography>
+                                    <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                                        {finalBalance.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
+                                    </Typography>
+                                </Paper>
                             </Box>
-                        )}
-                        {realFinalBalance !== null && (
-                            <>
-                                <Typography variant="h6" gutterBottom sx={{mt: 2}}>
-                                    Real Final Balance (Inflation-Adjusted):{' '}
-                                    {realFinalBalance.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
+                            <Box sx={{ flex: '1 1 250px', minWidth: 0 }}>
+                                <Paper sx={{ 
+                                    p: 4, 
+                                    textAlign: 'center', 
+                                    bgcolor: 'success.main',
+                                    color: 'white'
+                                }}>
+                                    <Typography variant="h6" gutterBottom>
+                                        Interest Gained
+                                    </Typography>
+                                    <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                                        {interestGained.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
+                                    </Typography>
+                                </Paper>
+                            </Box>
+                            <Box sx={{ flex: '1 1 250px', minWidth: 0 }}>
+                                <Paper sx={{ 
+                                    p: 4, 
+                                    textAlign: 'center', 
+                                    bgcolor: 'info.main',
+                                    color: 'white'
+                                }}>
+                                    <Typography variant="h6" gutterBottom>
+                                        Total Deposited
+                                    </Typography>
+                                    <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                                        {totalDeposited.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
+                                    </Typography>
+                                </Paper>
+                            </Box>
+                            <Box sx={{ flex: '1 1 250px', minWidth: 0 }}>
+                                <Paper sx={{ 
+                                    p: 4, 
+                                    textAlign: 'center', 
+                                    bgcolor: 'secondary.main',
+                                    color: 'white'
+                                }}>
+                                    <Typography variant="h6" gutterBottom>
+                                        Real Balance
+                                    </Typography>
+                                    <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                                        {realFinalBalance?.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
+                                    </Typography>
+                                </Paper>
+                            </Box>
+                        </Box>
+                        
+                        {simulationData.length > 0 && (
+                            <Paper sx={{ p: { xs: 2, md: 3 }, mb: 3 }}>
+                                <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+                                    Balance Over Time
                                 </Typography>
-                                <Typography variant="body1" gutterBottom>
-                                    Real Interest Gained:{' '}
-                                    {realInterestGained.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
-                                </Typography>
-                            </>
+                                <Box sx={{ height: { xs: 250, sm: 300 }, position: 'relative' }}>
+                                    <Line
+                                        data={currentChartData}
+                                        options={{
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            plugins: {
+                                                legend: {
+                                                    position: 'top' as const,
+                                                },
+                                            },
+                                            scales: {
+                                                y: {
+                                                    beginAtZero: true,
+                                                },
+                                            },
+                                        }}
+                                    />
+                                </Box>
+                            </Paper>
                         )}
-                    </Paper>
+                    </>
                 ) : (
                     <Typography variant="body1">
                         No simulation results yet. Please run the simulation first.
@@ -693,100 +852,176 @@ const BalanceSimulator: React.FC = () => {
             </TabPanel>
 
             <TabPanel value={tabValue} index={3}>
-                <Paper sx={{p: 2, mb: 3}}>
-                    <Typography variant="h6" gutterBottom>
+                <Paper sx={{p: { xs: 2, md: 3 }, mb: 3}}>
+                    <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
                         Save Current Scenario
                     </Typography>
-                    <Stack direction="row" spacing={2}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                         <TextField
                             label="Scenario Name"
                             value={scenarioName}
                             onChange={(e) => setScenarioName(e.target.value)}
-                            sx={{width: '40%', mr: 2}}
+                            sx={{ flex: 1 }}
                         />
-                        <Button variant="outlined" onClick={handleSaveScenario} disabled={finalBalance === null}>
+                        <Button 
+                            variant="contained" 
+                            onClick={handleSaveScenario} 
+                            disabled={finalBalance === null}
+                            startIcon={<SaveIcon />}
+                            sx={{ minWidth: { xs: '100%', sm: 'auto' } }}
+                        >
                             Save Scenario
                         </Button>
                     </Stack>
                 </Paper>
-                <Stack direction="row" spacing={2} sx={{mb: 3}}>
-                    <Button variant="outlined" onClick={exportScenarios}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{mb: 3}}>
+                    <Button 
+                        variant="outlined" 
+                        onClick={exportScenarios}
+                        startIcon={<FileDownloadIcon />}
+                        sx={{ minWidth: { xs: '100%', sm: 'auto' } }}
+                    >
                         Export Scenarios
                     </Button>
-                    <Button variant="outlined" component="label">
+                    <Button 
+                        variant="outlined" 
+                        component="label"
+                        startIcon={<FileUploadIcon />}
+                        sx={{ minWidth: { xs: '100%', sm: 'auto' } }}
+                    >
                         Import Scenarios
                         <input type="file" hidden accept="application/json" onChange={importScenarios}/>
                     </Button>
                 </Stack>
                 {scenarios.length > 0 ? (
                     <>
-                        <Paper sx={{p: 2, mb: 3}}>
-                            <Typography variant="h6" gutterBottom>
-                                Saved Scenarios
+                        <Paper sx={{p: { xs: 2, md: 3 }, mb: 3}}>
+                            <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
+                                Saved Scenarios ({scenarios.length})
                             </Typography>
-                            <Table size="small">
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell>Name</TableCell>
-                                        <TableCell>Nominal Final Balance</TableCell>
-                                        <TableCell>Total Deposited</TableCell>
-                                        <TableCell>Nominal Interest</TableCell>
-                                        <TableCell>Actions</TableCell>
-                                    </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {scenarios.map((sc, i) => (
-                                        <TableRow key={i}>
-                                            <TableCell>{sc.name}</TableCell>
-                                            <TableCell>
-                                                {sc.finalBalance.toLocaleString('en-US', {
-                                                    style: 'currency',
-                                                    currency: 'USD',
-                                                })}
-                                            </TableCell>
-                                            <TableCell>
-                                                {sc.totalDeposited.toLocaleString('en-US', {
-                                                    style: 'currency',
-                                                    currency: 'USD',
-                                                })}
-                                            </TableCell>
-                                            <TableCell>
-                                                {(sc.finalBalance - (sc.settings.initialBalance + sc.totalDeposited)).toLocaleString('en-US', {
-                                                    style: 'currency',
-                                                    currency: 'USD',
-                                                })}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Stack direction="row" spacing={1}>
-                                                    <Button variant="outlined" size="small"
-                                                            onClick={() => handleLoadScenario(sc)}>
-                                                        Load
-                                                    </Button>
-                                                    <Button variant="outlined" size="small"
-                                                            onClick={() => handleOverwriteScenario(i)}>
-                                                        Overwrite
-                                                    </Button>
-                                                    <Button variant="outlined" size="small"
-                                                            onClick={() => handleDeleteScenario(i)}>
-                                                        Delete
-                                                    </Button>
-                                                </Stack>
-                                            </TableCell>
+                            <Box sx={{ display: { xs: 'block', md: 'none' } }}>
+                                {scenarios.map((sc, i) => (
+                                    <Paper key={i} sx={{ p: 2, mb: 2 }}>
+                                        <Typography variant="h6" sx={{ color: 'primary.main', mb: 1 }}>
+                                            {sc.name}
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                            Final Balance: {sc.finalBalance.toLocaleString('en-US', {
+                                                style: 'currency',
+                                                currency: 'USD',
+                                            })}
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                            Interest: {(sc.finalBalance - (sc.settings.initialBalance + sc.totalDeposited)).toLocaleString('en-US', {
+                                                style: 'currency',
+                                                currency: 'USD',
+                                            })}
+                                        </Typography>
+                                        <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
+                                            <Button 
+                                                variant="outlined" 
+                                                size="small"
+                                                onClick={() => handleLoadScenario(sc)}
+                                                startIcon={<DownloadIcon />}
+                                            >
+                                                Load
+                                            </Button>
+                                            <Button 
+                                                variant="outlined" 
+                                                size="small"
+                                                onClick={() => handleOverwriteScenario(i)}
+                                                startIcon={<SaveIcon />}
+                                            >
+                                                Overwrite
+                                            </Button>
+                                            <Button 
+                                                variant="outlined" 
+                                                size="small"
+                                                onClick={() => handleDeleteScenario(i)}
+                                                startIcon={<DeleteIcon />}
+                                                color="error"
+                                            >
+                                                Delete
+                                            </Button>
+                                        </Stack>
+                                    </Paper>
+                                ))}
+                            </Box>
+                            <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+                                <Table size="small">
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell>Name</TableCell>
+                                            <TableCell>Nominal Final Balance</TableCell>
+                                            <TableCell>Total Deposited</TableCell>
+                                            <TableCell>Nominal Interest</TableCell>
+                                            <TableCell>Actions</TableCell>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                                    </TableHead>
+                                    <TableBody>
+                                        {scenarios.map((sc, i) => (
+                                            <TableRow key={i}>
+                                                <TableCell>{sc.name}</TableCell>
+                                                <TableCell>
+                                                    {sc.finalBalance.toLocaleString('en-US', {
+                                                        style: 'currency',
+                                                        currency: 'USD',
+                                                    })}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {sc.totalDeposited.toLocaleString('en-US', {
+                                                        style: 'currency',
+                                                        currency: 'USD',
+                                                    })}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {(sc.finalBalance - (sc.settings.initialBalance + sc.totalDeposited)).toLocaleString('en-US', {
+                                                        style: 'currency',
+                                                        currency: 'USD',
+                                                    })}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Stack direction="row" spacing={1}>
+                                                        <Button variant="outlined" size="small"
+                                                                onClick={() => handleLoadScenario(sc)}>
+                                                            Load
+                                                        </Button>
+                                                        <Button variant="outlined" size="small"
+                                                                onClick={() => handleOverwriteScenario(i)}>
+                                                            Overwrite
+                                                        </Button>
+                                                        <Button variant="outlined" size="small"
+                                                                onClick={() => handleDeleteScenario(i)}>
+                                                            Delete
+                                                        </Button>
+                                                    </Stack>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </Box>
                         </Paper>
-                        <Paper sx={{p: 2}}>
-                            <Typography variant="h6" gutterBottom>
+                        <Paper sx={{p: { xs: 2, md: 3 }}}>
+                            <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
                                 Combined Scenario Chart
                             </Typography>
-                            <Box sx={{height: 300, position: 'relative'}}>
+                            <Box sx={{height: { xs: 250, sm: 300 }, position: 'relative'}}>
                                 <Line
                                     data={scenarioChartData}
                                     options={{
                                         responsive: true,
                                         maintainAspectRatio: false,
+                                        plugins: {
+                                            legend: {
+                                                position: 'top' as const,
+                                            },
+                                        },
+                                        scales: {
+                                            y: {
+                                                beginAtZero: true,
+                                            },
+                                        },
                                     }}
                                 />
                             </Box>
@@ -798,7 +1033,31 @@ const BalanceSimulator: React.FC = () => {
                     </Typography>
                 )}
             </TabPanel>
-        </Container>
+            
+            {/* Floating Help Button */}
+            <Button 
+                variant="contained" 
+                onClick={() => setHelpOpen(true)}
+                startIcon={<InfoIcon />}
+                sx={{ 
+                    position: 'fixed',
+                    bottom: 24,
+                    right: 24,
+                    borderRadius: '50px',
+                    minWidth: 'auto',
+                    px: 2,
+                    py: 1,
+                    fontSize: '0.875rem',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                    zIndex: 1000,
+                    '&:hover': {
+                        boxShadow: '0 6px 25px rgba(0,0,0,0.2)',
+                    }
+                }}
+            >
+                Help
+            </Button>
+        </Box>
     );
 };
 
