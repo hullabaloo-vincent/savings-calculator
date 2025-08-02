@@ -30,15 +30,17 @@ jobs:
 
       - name: Install Dependencies
         run: npm ci
+        working-directory: ./savings-calculator
 
       - name: Build Project
         run: npm run build
+        working-directory: ./savings-calculator
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist
+          path: ./savings-calculator/dist
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4 
+        uses: actions/deploy-pages@v4
